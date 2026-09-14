@@ -14,6 +14,9 @@ interface IConnectOptions {
     msgCallback?: (data: IWebSocketData) => void
 }
 
+// 存活的 Model 实例，页面从 Back-Forward Cache 恢复时统一重连
+const activeModels = new Set<Model>();
+
 export class Model {
     public ws: WebSocket;
     public reqId: number;
@@ -31,6 +34,8 @@ export class Model {
     null;
     /// #endif
     public app: App;
+    private connectOptions?: IConnectOptions;
+    private reconnectTimer?: number;
 
     constructor(options: {
         app: App,
@@ -54,6 +59,12 @@ export class Model {
     }
 
     public connect(options: IConnectOptions) {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = undefined;
+        }
+        this.connectOptions = options;
+        activeModels.add(this);
         const websocketURL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
         const ws = new WebSocket(`${websocketURL}?app=${Constants.SIYUAN_APPID}&id=${options.id}${options.type ? "&type=" + options.type : ""}`);
         ws.onopen = () => {
@@ -95,7 +106,8 @@ export class Model {
 
             if (0 > ev.reason.indexOf("close websocket")) {
                 console.warn("WebSocket is closed. Reconnect will be attempted in 3 second.", ev);
-                setTimeout(() => {
+                this.reconnectTimer = window.setTimeout(() => {
+                    this.reconnectTimer = undefined;
                     this.connect({
                         id: options.id,
                         type: options.type,
@@ -114,6 +126,27 @@ export class Model {
             this.ws.close();
         }
         this.ws = ws;
+    }
+
+    // 页面进入 Back-Forward Cache 前主动断开：Chrome 会在页面进入 bfcache 时
+    // 强制掐断 WebSocket 并在控制台报错，主动关闭可避免
+    public pause() {
+        if (!this.ws || WebSocket.OPEN < this.ws.readyState) {
+            return;
+        }
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+    }
+
+    // 页面从 Back-Forward Cache 恢复后立即重建连接
+    public resume() {
+        if (!this.connectOptions || (this.ws && WebSocket.OPEN === this.ws.readyState)) {
+            return;
+        }
+        this.connect(this.connectOptions);
     }
 
     public send(cmd: string, param: Record<string, unknown>, process = false) {
@@ -141,3 +174,14 @@ export class Model {
         // 子类按需释放模型持有的资源。
     }
 }
+
+// 页面进入 Back-Forward Cache 时 Chrome 会强制断开 WebSocket，
+// pagehide 时主动关闭、pageshow(persisted) 恢复时立即重连
+window.addEventListener("pagehide", () => {
+    activeModels.forEach((model) => model.pause());
+});
+window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+        activeModels.forEach((model) => model.resume());
+    }
+});
