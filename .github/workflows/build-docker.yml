@@ -52,9 +52,9 @@ jobs:
           TARGET="${TARGET#v}"; TARGET="v$TARGET"
           CURRENT="v$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)"
           echo "current=$CURRENT target=$TARGET"
-          if [ "$CURRENT" = "$TARGET" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$CURRENT" = "$TARGET" ]; then
             echo "UP_TO_DATE=true" >> "$GITHUB_ENV"
-            echo "已是最新版本，跳过本次构建"
+            echo "已是最新版本，跳过同步与构建"
             exit 0
           fi
 
@@ -73,8 +73,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: sync upstream $TARGET"
 
-          # 重新套用 WS 修复
-          if ! git apply -3 /tmp/ws-bfcache.patch; then
+          # 重新套用 WS 修复（幂等：已存在时跳过，普通应用失败再试三方合并）
+          if git apply --check /tmp/ws-bfcache.patch 2>/dev/null; then
+            git apply /tmp/ws-bfcache.patch
+          elif git apply --check --reverse /tmp/ws-bfcache.patch 2>/dev/null; then
+            echo "WS 修复已存在，跳过重复套用"
+            git push origin master
+            exit 0
+          elif git apply -3 /tmp/ws-bfcache.patch; then
+            echo "WS 修复已通过三方合并套用"
+          else
             echo "::error::BFCache WS 修复补丁在 $TARGET 上冲突，请手动适配 app/src/layout/Model.ts"
             exit 1
           fi
@@ -89,9 +97,9 @@ jobs:
           git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
           VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
           if [ "$VER" = "3.8.3" ]; then
-            ACCOUNT_PATCH=account-v3.8.3.patch
+            ACCOUNT_PATCH=account-v3.8.3
           else
-            ACCOUNT_PATCH=hide-account-entry.patch
+            ACCOUNT_PATCH=hide-account-entry
           fi
           for p in disable-update default-config mock-vip-user "$ACCOUNT_PATCH"; do
             echo "applying $p"
