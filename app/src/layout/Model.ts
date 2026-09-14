@@ -185,3 +185,9 @@ window.addEventListener("pageshow", (event) => {
         activeModels.forEach((model) => model.resume());
     }
 });
+// ws.close() 的关闭握手无法保证在页面冻结前完成，CLOSING 状态的连接仍会被
+// Chrome 记为 failed。注册 beforeunload 使页面不符合 BFCache 条件，从根源消除该报错，
+// 代价是后退导航时整页重载而非瞬时恢复
+window.addEventListener("beforeunload", () => {
+    // no-op，仅用于使页面退出 BFCache 资格
+});
