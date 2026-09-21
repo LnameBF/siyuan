@@ -87,13 +87,7 @@ jobs:
           if [ ! -d /tmp/siyuan-unlock ]; then
             git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
           fi
-          VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
-          case "$VER" in
-            3.8.3) ACCOUNT_PATCH=account-v3.8.3 ;;
-            3.8.4) ACCOUNT_PATCH=account-v3.8.4 ;;
-            *)     ACCOUNT_PATCH=hide-account-entry ;;
-          esac
-          for p in disable-update default-config mock-vip-user "$ACCOUNT_PATCH"; do
+          for p in disable-update default-config mock-vip-user hide-account-entry; do
             if ! git apply --check "/tmp/siyuan-unlock/patches/siyuan/$p.patch"; then
               echo "::warning::解锁补丁 $p 无法套用到 $TARGET，已回滚保持 $CURRENT，请先为 $TARGET 适配补丁"
               git reset --hard "$ORIG_HEAD"
@@ -116,12 +110,7 @@ jobs:
             git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
           fi
           VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
-          case "$VER" in
-            3.8.3) ACCOUNT_PATCH=account-v3.8.3 ;;
-            3.8.4) ACCOUNT_PATCH=account-v3.8.4 ;;
-            *)     ACCOUNT_PATCH=hide-account-entry ;;
-          esac
-          for p in disable-update default-config mock-vip-user "$ACCOUNT_PATCH"; do
+          for p in disable-update default-config mock-vip-user hide-account-entry; do
             echo "applying $p"
             git apply -v "/tmp/siyuan-unlock/patches/siyuan/$p.patch"
           done
