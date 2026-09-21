@@ -36,14 +36,15 @@ jobs:
           fetch-depth: 0    # 需要完整历史，用于从 WS 修复 commit 提取补丁
 
       # 定时任务检查上游最新版；手动触发且填了版本号时同步到指定版本。
-      # 同步方式：把源码树整体重置到上游 tag（保留 fork 历史，避免无关历史合并冲突），
-      # 再从 git 历史提取 BFCache WS 修复补丁重新套用，最后推送 master。
+      # 同步前预检解锁补丁能否套用，失败则整体回滚、保持当前可用版本不变。
       - name: Sync upstream version
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
         run: |
           set -e
+          ORIG_HEAD=$(git rev-parse HEAD)
+
           if [ "${{ github.event_name }}" = "schedule" ]; then
             TARGET=$(curl -fsSL https://api.github.com/repos/siyuan-note/siyuan/releases/latest | jq -r '.tag_name')
           else
@@ -62,45 +63,64 @@ jobs:
           WS_COMMIT=$(git log --format=%H --grep="BFCache freeze" -1)
           git diff "${WS_COMMIT}^" "${WS_COMMIT}" > /tmp/ws-bfcache.patch
 
-          # 源码树重置到上游目标版本
-          git remote add upstream "$UPSTREAM_GIT"
+          # 源码树整体重置到上游目标版本（保留 fork 历史，避免无关历史合并冲突）
+          git remote add upstream "$UPSTREAM_GIT" 2>/dev/null || git remote set-url upstream "$UPSTREAM_GIT"
           git fetch upstream "refs/tags/$TARGET:refs/tags/$TARGET" --depth=1
           git read-tree -u --reset "refs/tags/$TARGET"
           # 本流水线文件不在上游 tag 里，需要从当前历史恢复，避免同步后被删
           git checkout HEAD -- .github/workflows/build-docker.yml
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: sync upstream $TARGET"
 
           # 重新套用 WS 修复（幂等：已存在时跳过，普通应用失败再试三方合并）
           if git apply --check /tmp/ws-bfcache.patch 2>/dev/null; then
             git apply /tmp/ws-bfcache.patch
           elif git apply --check --reverse /tmp/ws-bfcache.patch 2>/dev/null; then
             echo "WS 修复已存在，跳过重复套用"
-            git push origin master
-            exit 0
           elif git apply -3 /tmp/ws-bfcache.patch; then
             echo "WS 修复已通过三方合并套用"
           else
             echo "::error::BFCache WS 修复补丁在 $TARGET 上冲突，请手动适配 app/src/layout/Model.ts"
+            git reset --hard "$ORIG_HEAD"
             exit 1
           fi
+
+          # 预检：解锁补丁必须能在新版本上套用，否则回滚保持当前版本
+          if [ ! -d /tmp/siyuan-unlock ]; then
+            git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
+          fi
+          VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
+          case "$VER" in
+            3.8.3) ACCOUNT_PATCH=account-v3.8.3 ;;
+            3.8.4) ACCOUNT_PATCH=account-v3.8.4 ;;
+            *)     ACCOUNT_PATCH=hide-account-entry ;;
+          esac
+          for p in disable-update default-config mock-vip-user "$ACCOUNT_PATCH"; do
+            if ! git apply --check "/tmp/siyuan-unlock/patches/siyuan/$p.patch"; then
+              echo "::warning::解锁补丁 $p 无法套用到 $TARGET，已回滚保持 $CURRENT，请先为 $TARGET 适配补丁"
+              git reset --hard "$ORIG_HEAD"
+              echo "UP_TO_DATE=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: reapply BFCache websocket fix on $TARGET"
+          git commit -m "chore: sync upstream $TARGET"
           git push origin master
 
       - name: Apply unlock patches
         if: env.UP_TO_DATE != 'true'
         run: |
           set -e
-          git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
-          VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
-          if [ "$VER" = "3.8.3" ]; then
-            ACCOUNT_PATCH=account-v3.8.3
-          else
-            ACCOUNT_PATCH=hide-account-entry
+          if [ ! -d /tmp/siyuan-unlock ]; then
+            git clone --depth=1 "$UNLOCK_GIT" /tmp/siyuan-unlock
           fi
+          VER=$(grep -oP 'const Ver = "\K[^"]+' kernel/util/working.go)
+          case "$VER" in
+            3.8.3) ACCOUNT_PATCH=account-v3.8.3 ;;
+            3.8.4) ACCOUNT_PATCH=account-v3.8.4 ;;
+            *)     ACCOUNT_PATCH=hide-account-entry ;;
+          esac
           for p in disable-update default-config mock-vip-user "$ACCOUNT_PATCH"; do
             echo "applying $p"
             git apply -v "/tmp/siyuan-unlock/patches/siyuan/$p.patch"
