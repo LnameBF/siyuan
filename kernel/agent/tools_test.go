@@ -329,6 +329,31 @@ func TestSkillToolActionEffects(t *testing.T) {
 	}
 }
 
+func TestBazaarToolActionEffects(t *testing.T) {
+	for _, action := range []string{"list", "installed", "updates", "readme"} {
+		if needsConfirm("bazaar", action, nil) || needsLocalSnapshot("bazaar", action) {
+			t.Errorf("read-only Bazaar action %q must not confirm or snapshot", action)
+		}
+	}
+	for _, action := range []string{"install", "uninstall", "update", "update_all", "install_local", "enable", "disable"} {
+		if !needsConfirm("bazaar", action, nil) || !needsLocalSnapshot("bazaar", action) {
+			t.Errorf("Bazaar write %q must confirm and snapshot", action)
+		}
+	}
+	if buildDoomSignature("bazaar", "readme", map[string]any{"packageName": "one"}) ==
+		buildDoomSignature("bazaar", "readme", map[string]any{"packageName": "two"}) {
+		t.Fatal("different package requests must not be treated as a repeated call")
+	}
+	if buildDoomSignature("bazaar", "installed", map[string]any{"offset": 0, "enabled": true}) ==
+		buildDoomSignature("bazaar", "installed", map[string]any{"offset": 20, "enabled": true}) {
+		t.Fatal("different pages must not be treated as a repeated call")
+	}
+	if buildDoomSignature("bazaar", "installed", map[string]any{"enabled": true}) ==
+		buildDoomSignature("bazaar", "installed", map[string]any{"enabled": false}) {
+		t.Fatal("different enable filters must not be treated as a repeated call")
+	}
+}
+
 func TestQueryToolActionEffects(t *testing.T) {
 	tests := []struct {
 		toolName     string
@@ -430,8 +455,11 @@ func TestAgentConfirmationDeadlineZeroHasNoLimit(t *testing.T) {
 }
 
 func TestQuestionTimeoutReusesConfirmTimeout(t *testing.T) {
-	if timeout := resolveQuestionTimeout(0); timeout != fallbackQuestionTimeout {
-		t.Fatalf("zero confirmation timeout did not use the fallback question timeout: %v", timeout)
+	if timeout := resolveQuestionTimeout(0); timeout != 0 {
+		t.Fatalf("zero confirmation timeout created a question timeout: %v", timeout)
+	}
+	if timeout := resolveQuestionTimeout(-time.Second); timeout != fallbackQuestionTimeout {
+		t.Fatalf("negative confirmation timeout did not use the fallback question timeout: %v", timeout)
 	}
 	if timeout := resolveQuestionTimeout(90 * time.Second); timeout != 90*time.Second {
 		t.Fatalf("positive confirmation timeout was not reused by question: %v", timeout)
@@ -442,7 +470,7 @@ func TestQuestionWithoutDeadlineWaitsForAnswer(t *testing.T) {
 	events := make(chan AgentEvent, 1)
 	resultCh := make(chan string, 1)
 	go func() {
-		resultCh <- handleQuestion(context.Background(), map[string]any{"questions": []any{}}, "test-round", events, 0)
+		resultCh <- handleQuestion(context.Background(), map[string]any{"questions": []any{}}, "test-round", events, resolveQuestionTimeout(0))
 	}()
 
 	event := <-events

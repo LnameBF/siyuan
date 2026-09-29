@@ -38,6 +38,26 @@ import {
 } from "./catalog";
 import {getBuiltinProfileEntryVisibility} from "./profile";
 
+test("remove list leads single and multiple block conversion menus", () => {
+    for (const path of ["gutter.single.turnInto", "gutter.multi.turnInto"]) {
+        assert.deepEqual(getEntryCatalogChildren(path).slice(0, 2).map(item => item.key), ["removeList", "list"]);
+        const entry = getEntryCatalogNode(`${path}.removeList`);
+        assert.equal(entry.type, "entry");
+        assert.equal(entry.simple, true);
+        assert.equal(getEntryParentPath(`${path}.removeList`), path);
+    }
+});
+
+test("document tree duplication follows single-document duplication in the configurable menu", () => {
+    const children = getEntryCatalogChildren("docTree.document.copy");
+    assert.deepEqual(children.slice(-2).map(item => item.key), ["duplicate", "duplicateTree"]);
+    const entry = getEntryCatalogNode("docTree.document.copy.duplicateTree");
+    assert.equal(entry.type, "entry");
+    assert.equal(entry.simple, true);
+    assert.equal(getEntryParentPath("docTree.document.copy.duplicateTree"), "docTree.document.copy");
+    assert.equal(getEntryCatalogNode("docTree.multi.copy.duplicateTree"), undefined);
+});
+
 test("embedded heading levels follow display modes and expose all levels in Simple", () => {
     const path = "gutter.single.blockEmbed";
     assert.deepEqual(getEntryCatalogChildren(path).map(entry => entry.key), [
@@ -76,6 +96,7 @@ const slashMenuBuiltinOrder = [
     "check",
     "quote",
     "tabs",
+    "mindmap",
     "calloutNote",
     "calloutTip",
     "calloutImportant",
@@ -87,8 +108,10 @@ const slashMenuBuiltinOrder = [
     "math",
     "html",
     "databaseTableView",
-    "databaseKanbanView",
+    "databaseListView",
     "databaseGalleryView",
+    "databaseKanbanView",
+    "databaseCalendarView",
     "separator_2",
     "emoji",
     "link",
@@ -116,7 +139,6 @@ const slashMenuBuiltinOrder = [
     "flowChart",
     "graph",
     "mermaid",
-    "mindmap",
     "UML",
     "separator_5",
     "infoStyle",
@@ -486,7 +508,7 @@ test("slash menu catalog follows the built-in hint order", () => {
     assert.deepEqual(section?.children.map((item) => item.key), ["menu"]);
     const children = getEntryCatalogChildren(SLASH_MENU_ROOT_PATH);
     assert.deepEqual(children.map((item) => item.key), slashMenuBuiltinOrder);
-    assert.equal(children.filter((item) => item.type === "entry").length, 64);
+    assert.equal(children.filter((item) => item.type === "entry").length, 66);
     assert.equal(children.filter((item) => item.type === "separator").length, 5);
     assert.equal(children.every((item) => item.simple), true);
 });
@@ -659,16 +681,23 @@ test("heading conversions follow list conversions across block menu scopes", () 
     const headingKeys = ["heading1", "heading2", "heading3", "heading4", "heading5", "heading6"];
     ["gutter.single.turnInto", "gutter.multi.turnInto"].forEach((path) => {
         const keys = getEntryCatalogChildren(path).map(item => item.key);
+        assert.equal(keys[0], "removeList");
+        assert.equal(getEntryCatalogNode(`${path}.paragraph`)?.simple, true);
         const headingIndex = keys.indexOf("heading1");
-        assert.equal(headingIndex, keys.indexOf("check") + 1);
+        assert.equal(headingIndex, keys.indexOf(path === "gutter.single.turnInto" ? "tabs" : "calloutCustom") + 1);
         assert.deepEqual(keys.slice(headingIndex, headingIndex + headingKeys.length), headingKeys);
+        headingKeys.forEach(key => {
+            const entry = getEntryCatalogNode(`${path}.${key}`);
+            assert.equal(entry?.type, "entry");
+            assert.equal(entry?.simple, true);
+        });
     });
 });
 
 test("tab conversion belongs to the single block conversion menu", () => {
     const keys = getEntryCatalogChildren("gutter.single.turnInto").map(item => item.key);
     assert.equal(keys[keys.indexOf("tabs") - 1], "calloutCustom");
-    assert.equal(keys[keys.indexOf("tabs") + 1], "list");
+    assert.equal(keys[keys.indexOf("tabs") + 1], "heading1");
     assert.equal(getEntryCatalogNode("gutter.single.turnInto.tabs")?.simple, true);
     assert.equal(getEntryCatalogNode("gutter.single.turnInto.tabs")?.type, "entry");
     assert.equal(getEntryCatalogNode("gutter.multi.turnInto.tabs"), undefined);
@@ -745,12 +774,18 @@ test("list block submenu follows the base block entries", () => {
         "prependListItem",
         "appendListItem",
     ]);
+    assert.equal(getEntryCatalogNode("gutter.single.listBlock.listMindmap"), undefined);
+    assert.equal(getEntryCatalogNode("gutter.single.turnInto.listMindmap")?.simple, true);
+    assert.equal(getEntryCatalogNode("gutter.single.turnInto.listMindmap")?.type, "entry");
+    assert.equal(getEntryParentPath("gutter.single.turnInto.listMindmap"), "gutter.single.turnInto");
+    assert.equal(getEntryCatalogNode("gutter.multi.listBlock.listMindmap"), undefined);
     assert.equal(getEntryCatalogNode("gutter.single.listBlock.customTaskStatus")?.simple, true);
     assert.equal(getEntryCatalogNode("gutter.single.listBlock.customTaskStatus")?.type, "entry");
     assert.equal(getEntryCatalogNode("gutter.single.listBlock.taskStatus"), undefined);
     assert.equal(getEntryCatalogNode("gutter.single.listBlock.separator_taskStatus")?.type, "separator");
     const source = readFileSync(resolve(process.cwd(), "src/protyle/gutter/index.ts"), "utf8");
     const submenu = source.slice(source.indexOf("const genListBlockSubmenu"), source.indexOf("return submenu;", source.indexOf("const genListBlockSubmenu")));
+    assert.doesNotMatch(submenu, /id: "listMindmap"/);
     const taskSource = readFileSync(resolve(process.cwd(), "src/protyle/wysiwyg/taskStatusDialog.ts"), "utf8");
     assert.deepEqual([...Array.from(taskSource.matchAll(/id: "([^"]+)"/g), match => match[1]),
         ...Array.from(submenu.matchAll(/id: "([^"]+)"/g), match => match[1])],
@@ -799,6 +834,9 @@ test("super block actions and vertical alignment use their respective menu group
 });
 
 test("gutter height menus follow width and stay aligned across selection scopes", () => {
+    assert.equal(getEntryCatalogNode("gutter.single.chart"), undefined);
+    assert.equal(getEntryCatalogNode("gutter.single.separator_chart"), undefined);
+    assert.equal(getEntryCatalogNode("gutter.single.chart.height"), undefined);
     const expectedHeightOrder = [
         "heightInput",
         "height_25%",
@@ -1271,6 +1309,21 @@ test("simple profile follows the reviewed defaults", () => {
     ];
     shown.forEach((path) => assert.equal(getEntryCatalogNode(path)?.simple, true, path));
     hidden.forEach((path) => assert.equal(getEntryCatalogNode(path)?.simple, false, path));
+});
+
+test("list conversion prioritizes list actions and keeps recursive entry identities", () => {
+    for (const root of ["gutter.single", "gutter.multi"]) {
+        const keys = getEntryCatalogChildren(`${root}.turnInto`).map(item => item.key);
+        assert.deepEqual(keys.slice(0, root === "gutter.single" ? 7 : 6), [
+            "removeList", "list", "orderedList", "check",
+            ...(root === "gutter.single" ? ["listMindmap"] : []), "includeSublists", "paragraph",
+        ]);
+        const children = getEntryCatalogChildren(`${root}.turnInto.includeSublists`);
+        assert.deepEqual(children.map(item => item.key), [
+            "recursiveRemoveList", "recursiveList", "recursiveOrderedList", "recursiveCheck", "recursiveParagraph",
+        ]);
+        assert.equal(children[0].simple, true);
+    }
 });
 
 test("entry catalog resolves navigation columns for deeply nested entries", () => {

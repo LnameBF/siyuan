@@ -17,8 +17,9 @@
 package av
 
 type renderedContentBinding struct {
-	value   *Value
-	content string
+	value       *Value
+	content     string
+	hasTemplate bool
 }
 
 // CloneStoredValue 复制字段存储值，并递归剥离运行时显示模板结果。
@@ -28,6 +29,7 @@ func CloneStoredValue(value *Value) (ret *Value) {
 	}
 	cloned := *value
 	cloned.RenderedContent = ""
+	cloned.HasRenderTemplate = false
 	ret = &cloned
 	if nil != value.Relation {
 		relation := *value.Relation
@@ -58,16 +60,19 @@ func (av *AttributeView) suspendRenderedContents() (restore func()) {
 	var bindings []renderedContentBinding
 	if nil != av {
 		av.visitPersistedValues(func(value *Value) {
-			if "" == value.RenderedContent {
+			if "" == value.RenderedContent && !value.HasRenderTemplate {
 				return
 			}
-			bindings = append(bindings, renderedContentBinding{value: value, content: value.RenderedContent})
+			bindings = append(bindings, renderedContentBinding{value: value, content: value.RenderedContent,
+				hasTemplate: value.HasRenderTemplate})
 			value.RenderedContent = ""
+			value.HasRenderTemplate = false
 		})
 	}
 	return func() {
 		for _, binding := range bindings {
 			binding.value.RenderedContent = binding.content
+			binding.value.HasRenderTemplate = binding.hasTemplate
 		}
 	}
 }
@@ -163,11 +168,14 @@ func visitViewValues(view *View, visitValue func(*Value)) {
 	if nil != view.GroupCalc && nil != view.GroupCalc.FieldCalc {
 		visitValue(view.GroupCalc.FieldCalc.Result)
 	}
-	if nil != view.Table {
-		if nil != view.Table.BaseLayout {
-			visitFilterValues(view.Table.Filters, visitValue)
+	for _, layout := range view.TableLayouts() {
+		if nil == layout {
+			continue
 		}
-		for _, column := range view.Table.Columns {
+		if nil != layout.BaseLayout {
+			visitFilterValues(layout.Filters, visitValue)
+		}
+		for _, column := range layout.Columns {
 			if nil == column {
 				continue
 			}

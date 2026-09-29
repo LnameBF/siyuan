@@ -79,6 +79,7 @@ second paragraph
 - Icons: attr.set only changes a document BLOCK's icon — it cannot set a NOTEBOOK's icon. For notebooks use notebook.set_icon (a specific emoji) or notebook.random_icon (random emoji, optionally scoped by id; omit id to randomize ALL notebooks).
 - Document images: image.list finds local images referenced by a document; call image.analyze on a returned asset path to attach it to the current model for understanding. image.generate creates a reusable image asset for insertion or other document operations.
 - HTML components: asset.create_html writes HTML content as an asset and inserts a sandboxed IFrame block in one operation. Prefer self-contained HTML; only use remote resources when the user requests them.
+- Bazaar packages: use bazaar.list/installed/updates for paginated summaries (no README); while hasMore is true, fetch the next page with offset + packages.length. Use bazaar.installed(pkgType=plugins, enabled=true) to find configured enabled plugins; enabled is not proof of execution in the current frontend. Read details with bazaar.readme, and use bazaar.install/update/uninstall/install_local to manage packages. Never manage package directories through file or unzip. Call bazaar.updates before bazaar.update_all and include each target's pkgType, name as packageName and repoHash for confirmation; if a target changed, query and confirm again. Enabling plugins executes third-party code: call bazaar.enable only when the user authorizes enabling them. Pass the target SiYuan frontend for compatibility checks; ask if unknown.
 
 ## Response Guidelines
 - Reply in the language configured in SiYuan's appearance settings.
@@ -202,6 +203,7 @@ var toolSignatureKeys = map[string][]string{
 	"import":    {"notebook", "path"},
 	"export":    {"id"},
 	"skill":     {"name", "url"},
+	"bazaar":    {"pkgType", "packageName", "keyword", "frontend", "path", "packages", "offset", "limit", "enabled"},
 
 	"system":     {"action"},
 	"workspace":  {"action"},
@@ -380,16 +382,17 @@ type AgentEvent struct {
 }
 
 type AgentMessage struct {
-	Role                 string            `json:"role"`
-	Content              string            `json:"content"`
-	ReasoningContent     string            `json:"reasoningContent,omitempty"`
-	ResponseOutput       []json.RawMessage `json:"responseOutput,omitempty"`
-	ResponseOutputTokens int               `json:"responseOutputTokens,omitempty"`
-	RoundID              string            `json:"roundID,omitempty"`
-	References           []Reference       `json:"references,omitempty"`
-	EditorContext        *EditorContext    `json:"editorContext,omitempty"`
-	ToolCalls            []AgentToolCall   `json:"toolCalls,omitempty"`
-	EntryID              string            `json:"entryID,omitempty"`
+	Role                 string                 `json:"role"`
+	Content              string                 `json:"content"`
+	ReasoningContent     string                 `json:"reasoningContent,omitempty"`
+	NativeContent        *util.AIMessageContent `json:"nativeContent,omitempty"`
+	ResponseOutput       []json.RawMessage      `json:"responseOutput,omitempty"`
+	ResponseOutputTokens int                    `json:"responseOutputTokens,omitempty"`
+	RoundID              string                 `json:"roundID,omitempty"`
+	References           []Reference            `json:"references,omitempty"`
+	EditorContext        *EditorContext         `json:"editorContext,omitempty"`
+	ToolCalls            []AgentToolCall        `json:"toolCalls,omitempty"`
+	EntryID              string                 `json:"entryID,omitempty"`
 }
 
 type AgentToolCall struct {
@@ -463,30 +466,31 @@ func newAgentUserMessage(content, entryID string, references []Reference, editor
 // SessionEntry 与前端 SessionStore.ts 中 entries 元素一一对应，
 // 是会话持久化的唯一数据源（不再单独持久化 messages）。
 type SessionEntry struct {
-	ID                   string             `json:"id,omitempty"`
-	Type                 string             `json:"type"` // user|thinking|assistant|confirm|snapshot|rollback
-	Content              string             `json:"content,omitempty"`
-	References           []Reference        `json:"references,omitempty"`
-	EditorContext        *EditorContext     `json:"editorContext,omitempty"`
-	BlockHTML            string             `json:"blockHTML,omitempty"`    // 仅 user，用于保留发送框的 BlockDOM 展示结构
-	Steps                []SessionEntryStep `json:"steps,omitempty"`        // 仅 thinking
-	ToolCalls            []AgentToolCall    `json:"toolCalls,omitempty"`    // 仅 assistant
-	Duration             float64            `json:"duration,omitempty"`     // 秒（thinking/assistant 均可能带）
-	PromptTokens         int                `json:"promptTokens,omitempty"` // 仅 assistant
-	CompletionTok        int                `json:"completionTokens,omitempty"`
-	Timestamp            int64              `json:"timestamp,omitempty"`
-	ReasoningCont        string             `json:"reasoningContent,omitempty"`
-	ResponseOutput       []json.RawMessage  `json:"responseOutput,omitempty"`
-	ResponseOutputTokens int                `json:"responseOutputTokens,omitempty"`
-	RoundID              string             `json:"roundID,omitempty"`
-	Name                 string             `json:"name,omitempty"`
-	Args                 map[string]any     `json:"args,omitempty"`
-	ConfirmID            string             `json:"confirmID,omitempty"`
-	Status               string             `json:"status,omitempty"`
-	QuestionID           string             `json:"questionID,omitempty"`
-	Questions            []map[string]any   `json:"questions,omitempty"`
-	Answers              []string           `json:"answers,omitempty"`
-	SnapshotID           string             `json:"snapshotID,omitempty"`
+	ID                   string                 `json:"id,omitempty"`
+	Type                 string                 `json:"type"` // user|thinking|assistant|confirm|snapshot|rollback
+	Content              string                 `json:"content,omitempty"`
+	References           []Reference            `json:"references,omitempty"`
+	EditorContext        *EditorContext         `json:"editorContext,omitempty"`
+	BlockHTML            string                 `json:"blockHTML,omitempty"`    // 仅 user，用于保留发送框的 BlockDOM 展示结构
+	Steps                []SessionEntryStep     `json:"steps,omitempty"`        // 仅 thinking
+	ToolCalls            []AgentToolCall        `json:"toolCalls,omitempty"`    // 仅 assistant
+	Duration             float64                `json:"duration,omitempty"`     // 秒（thinking/assistant 均可能带）
+	PromptTokens         int                    `json:"promptTokens,omitempty"` // 仅 assistant
+	CompletionTok        int                    `json:"completionTokens,omitempty"`
+	Timestamp            int64                  `json:"timestamp,omitempty"`
+	ReasoningCont        string                 `json:"reasoningContent,omitempty"`
+	NativeContent        *util.AIMessageContent `json:"nativeContent,omitempty"`
+	ResponseOutput       []json.RawMessage      `json:"responseOutput,omitempty"`
+	ResponseOutputTokens int                    `json:"responseOutputTokens,omitempty"`
+	RoundID              string                 `json:"roundID,omitempty"`
+	Name                 string                 `json:"name,omitempty"`
+	Args                 map[string]any         `json:"args,omitempty"`
+	ConfirmID            string                 `json:"confirmID,omitempty"`
+	Status               string                 `json:"status,omitempty"`
+	QuestionID           string                 `json:"questionID,omitempty"`
+	Questions            []map[string]any       `json:"questions,omitempty"`
+	Answers              []string               `json:"answers,omitempty"`
+	SnapshotID           string                 `json:"snapshotID,omitempty"`
 }
 
 // SessionEntryStep 描述一次思考步骤。工具调用只保留名字与调用 ID 列表，过程正文保存在 Content，
@@ -521,7 +525,7 @@ type agentCheckpoint struct {
 	LastCommittedTurnID   string         `json:"lastCommittedTurnID,omitempty"`
 }
 
-func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imageCapabilityKey string, contextLimit int,
+func AgentChat(ctx context.Context, client *util.AIClient, protocol, model, imageCapabilityKey string, contextLimit int,
 	sessionID string, userEntryID string, contentRevision int64, userMessage string, userBlockHTML *string,
 	language string, references []Reference, editorCtx EditorContext, frontendCapabilities []FrontendCapability,
 	regenerate bool, confirmTimeout time.Duration, maxRetries int, reasoningEffort string,
@@ -537,6 +541,12 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 		}()
 		thoughtSignatureState := util.NewGeminiThoughtSignatureState()
 		ctx = util.ContextWithGeminiThoughtSignatureState(ctx, thoughtSignatureState)
+		// 每次用户发起对话只读取一次，工具轮次和压缩重建共享这份指令快照。
+		instructions, instructionsErr := util.ReadAgentInstructions()
+		if instructionsErr != nil {
+			sendCriticalEvent(ctx, ch, AgentEvent{Type: "error", Error: util.AgentInstructionsError(instructionsErr, language)})
+			return
+		}
 
 		if kernelModel.Conf.AI.MCP != nil {
 			mcpclient.EnsureMCPConnected(kernelModel.Conf.AI.MCP.Servers)
@@ -654,14 +664,14 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 							currentUserEntry.BlockHTML = *userBlockHTML
 						}
 					}
-					messages = checkpointMessagesToOpenAIWithSummary(checkpointMsgs, language, capabilities, compaction)
+					messages = checkpointMessagesToOpenAIWithSummary(checkpointMsgs, language, capabilities, compaction, instructions.Content)
 				}
 			}
 		}
 
 		if messages == nil {
 			checkpointMsgs = []AgentMessage{newAgentUserMessage(userMessage, userEntryID, references, editorCtx)}
-			messages = buildInitialMessages(userMessage, language, references, editorCtx, capabilities)
+			messages = buildInitialMessages(userMessage, language, references, editorCtx, capabilities, instructions.Content)
 		}
 		restoreGeminiThoughtSignatures(thoughtSignatureState, checkpointMsgs)
 
@@ -800,7 +810,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 					candidate := candidates[i]
 					candidateCheckpointMsgs := checkpointMessagesAfterCompaction(sessionEntries, candidate, tail)
 					candidateMessages := checkpointMessagesToOpenAIWithSummary(
-						candidateCheckpointMsgs, language, capabilities, nil)
+						candidateCheckpointMsgs, language, capabilities, nil, instructions.Content)
 					candidateMessages, _ = projectImageMessages(candidateMessages)
 					baseTokens := estimateProtocolRequestTokens(model, protocol, candidateMessages,
 						candidateCheckpointMsgs, nil, requestTools)
@@ -813,7 +823,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 			selectedEntryCount := candidates[selectedCandidateIndex]
 			selectedCheckpointMsgs := checkpointMessagesAfterCompaction(sessionEntries, selectedEntryCount, tail)
 			selectedMessages := checkpointMessagesToOpenAIWithSummary(
-				selectedCheckpointMsgs, language, capabilities, nil)
+				selectedCheckpointMsgs, language, capabilities, nil, instructions.Content)
 			estimatedSelectedMessages, _ := projectImageMessages(selectedMessages)
 			baseTokens := estimateProtocolRequestTokens(model, protocol, estimatedSelectedMessages,
 				selectedCheckpointMsgs, nil, requestTools)
@@ -831,7 +841,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 					responseSource, language, capabilities, compaction, imageInputDisabled)
 				compactRequest := openai.ChatCompletionRequest{
 					Model:           model,
-					Messages:        []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities)}},
+					Messages:        []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities, instructions.Content)}},
 					Tools:           requestTools,
 					ReasoningEffort: reasoningEffort,
 				}
@@ -876,7 +886,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 					"%w: build runtime state: %v", errContextCannotBeCompacted, compactionStateErr)
 			}
 			nextMessages := checkpointMessagesToOpenAIWithSummary(
-				selectedCheckpointMsgs, language, capabilities, nextCompaction)
+				selectedCheckpointMsgs, language, capabilities, nextCompaction, instructions.Content)
 			estimatedNextMessages, _ := projectImageMessages(nextMessages)
 			if estimateProtocolRequestTokens(model, protocol, estimatedNextMessages, selectedCheckpointMsgs,
 				nextCompaction, requestTools) > inputBudget {
@@ -923,7 +933,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 			capabilities = roundCapabilities
 			tools = requestTools
 			if len(messages) > 0 && messages[0].Role == openai.ChatMessageRoleSystem {
-				messages[0].Content = buildSystemPrompt(language, roundCapabilities)
+				messages[0].Content = buildSystemPrompt(language, roundCapabilities, instructions.Content)
 			}
 
 			_, compactErr := compactContext(requestTools, false)
@@ -956,7 +966,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 				}
 			}
 			stream, firstResp, roundCancel, requestMessages, imageDowngraded, imageUnsupportedDetected, streamErr :=
-				createProtocolImageCompatibleStream(util.ContextWithGeminiThoughtSummaries(ctx), client, protocol, req,
+				createProtocolImageCompatibleStream(contextWithNativeContents(util.ContextWithGeminiThoughtSummaries(ctx), checkpointMsgs), client, protocol, req,
 					responseInput, imageCapabilityKey,
 					imageInputDisabled, maxRetries, requestTimeout, streamIdleTimeout, delayForCategory, ch)
 			if imageUnsupportedDetected {
@@ -1120,6 +1130,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 				}
 			}
 
+			nativeContent := stream.NativeContent()
 			responseOutput := stream.ResponseOutput()
 			if len(responseOutput) == 0 {
 				responseOutputTokens = 0
@@ -1154,6 +1165,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 					Role:                 "assistant",
 					Content:              contentBuilder.String(),
 					ReasoningContent:     reasoningBuilder.String(),
+					NativeContent:        nativeContent,
 					ResponseOutput:       responseOutput,
 					ResponseOutputTokens: responseOutputTokens,
 					RoundID:              roundID,
@@ -1520,11 +1532,12 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 			}
 
 			content := contentBuilder.String()
-			if content != "" || reasoningBuilder.Len() > 0 || len(responseOutput) > 0 {
+			if content != "" || reasoningBuilder.Len() > 0 || len(responseOutput) > 0 || nativeContent != nil {
 				checkpointMsgs = append(checkpointMsgs, AgentMessage{
 					Role:                 "assistant",
 					Content:              content,
 					ReasoningContent:     reasoningBuilder.String(),
+					NativeContent:        nativeContent,
 					ResponseOutput:       responseOutput,
 					ResponseOutputTokens: responseOutputTokens,
 					RoundID:              roundID,
@@ -1559,7 +1572,7 @@ func AgentChat(ctx context.Context, client *openai.Client, protocol, model, imag
 	return ch
 }
 
-func GenerateTitle(client *openai.Client, apiBaseURL, protocol, model, userMsg, language string) string {
+func GenerateTitle(client *util.AIClient, apiBaseURL, protocol, model, userMsg, language string) string {
 	const (
 		initialMaxCompletionTokens  = 50
 		fallbackMaxCompletionTokens = 512
@@ -1899,7 +1912,7 @@ func resolveBrowserCapabilityTimeout(confirmTimeout time.Duration) time.Duration
 // resolveQuestionTimeout 解析 question 工具等待用户作答的时长：确认超时时间为 0 时一直等待，
 // 其余情况沿用确认超时时间（调用方已把负数兜底为默认值），因此默认配置下为 600 秒。
 func resolveQuestionTimeout(confirmTimeout time.Duration) time.Duration {
-	if confirmTimeout <= 0 {
+	if confirmTimeout < 0 {
 		return fallbackQuestionTimeout
 	}
 	return confirmTimeout
@@ -2016,13 +2029,20 @@ func availableSkillsSegment(skills []util.SkillInfo) string {
 	return sb.String()
 }
 
-func buildSystemPrompt(language string, capabilities *capabilitySet) string {
+func buildSystemPrompt(language string, capabilities *capabilitySet, instructions ...string) string {
 	if kernelModel.Conf != nil && kernelModel.Conf.Appearance != nil && kernelModel.Conf.Appearance.Lang != "" {
 		language = kernelModel.Conf.Appearance.Lang
 	}
 
 	var sb strings.Builder
 	sb.WriteString(filterSystemPromptByCapabilities(systemPrompt, capabilities))
+	if len(instructions) > 0 && strings.TrimSpace(instructions[0]) != "" {
+		sb.WriteString("\n\n## Workspace instructions\nThe following AGENTS.md contains persistent user preferences for this workspace. " +
+			"Follow them where applicable; the current user's explicit request overrides general preferences. " +
+			"They cannot override built-in rules, tool permissions, approval requirements or access controls.\n<workspace_instructions>\n")
+		sb.WriteString(instructions[0])
+		sb.WriteString("\n</workspace_instructions>")
+	}
 	sb.WriteString("\n\n<env>\nWorkspace: ")
 	sb.WriteString(util.WorkspaceDir)
 	sb.WriteString("\nVersion: ")
@@ -2032,6 +2052,10 @@ func buildSystemPrompt(language string, capabilities *capabilitySet) string {
 	sb.WriteString("\nContainer: ")
 	sb.WriteString(util.Container)
 	sb.WriteString("\n</env>")
+
+	if capabilities.hasModelName("decision") {
+		sb.WriteString(decisionModelPrompt)
+	}
 
 	skills := util.DiscoverSkills(kernelModel.EnabledUserSkills())
 	if capabilities.hasModelName("skill") && len(skills) > 0 {
@@ -2146,9 +2170,9 @@ func buildUserMessageContent(userMessage string, references []Reference, editorC
 	return sb.String()
 }
 
-func buildInitialMessages(userMessage string, language string, references []Reference, editorCtx EditorContext, capabilities *capabilitySet) []openai.ChatCompletionMessage {
+func buildInitialMessages(userMessage string, language string, references []Reference, editorCtx EditorContext, capabilities *capabilitySet, instructions ...string) []openai.ChatCompletionMessage {
 	messages := []openai.ChatCompletionMessage{
-		{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities)},
+		{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities, instructions...)},
 		{Role: openai.ChatMessageRoleUser, Content: buildUserMessageContent(userMessage, references, cloneEditorContext(editorCtx), capabilities)},
 	}
 	if attachmentMessage, ok := buildAttachmentMessage(agentMessageAttachments(AgentMessage{Role: "user", Content: userMessage})); ok {
@@ -2220,6 +2244,7 @@ func entriesToAgentMessages(entries []SessionEntry) []AgentMessage {
 				Role:                 "assistant",
 				Content:              e.Content,
 				ReasoningContent:     e.ReasoningCont,
+				NativeContent:        util.CloneAIMessageContent(e.NativeContent),
 				ResponseOutput:       util.CloneOpenAIResponseOutput(e.ResponseOutput),
 				ResponseOutputTokens: e.ResponseOutputTokens,
 				RoundID:              e.RoundID,
@@ -2238,6 +2263,16 @@ func entriesToAgentMessages(entries []SessionEntry) []AgentMessage {
 		}
 	}
 	return msgs
+}
+
+func contextWithNativeContents(ctx context.Context, messages []AgentMessage) context.Context {
+	var contents []*util.AIMessageContent
+	for _, message := range messages {
+		if message.Role == "assistant" {
+			contents = append(contents, message.NativeContent)
+		}
+	}
+	return util.ContextWithAIMessageContents(ctx, contents)
 }
 
 func restoreGeminiThoughtSignatures(state *util.GeminiThoughtSignatureState, messages []AgentMessage) {
@@ -2264,9 +2299,9 @@ func checkpointMessagesToOpenAI(checkpointMsgs []AgentMessage, language string, 
 	return checkpointMessagesToOpenAIWithSummary(checkpointMsgs, language, capabilities, nil)
 }
 
-func checkpointMessagesToOpenAIWithSummary(checkpointMsgs []AgentMessage, language string, capabilities *capabilitySet, compaction *runtimeCompaction) []openai.ChatCompletionMessage {
+func checkpointMessagesToOpenAIWithSummary(checkpointMsgs []AgentMessage, language string, capabilities *capabilitySet, compaction *runtimeCompaction, instructions ...string) []openai.ChatCompletionMessage {
 	msgs := []openai.ChatCompletionMessage{
-		{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities)},
+		{Role: openai.ChatMessageRoleSystem, Content: buildSystemPrompt(language, capabilities, instructions...)},
 	}
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		msgs = append(msgs, openai.ChatCompletionMessage{
@@ -2367,7 +2402,7 @@ func checkpointMessagesToOpenAIResponseInput(checkpointMsgs []AgentMessage, lang
 	if compaction != nil {
 		if util.IsOpenAIResponsesProtocol(compaction.Protocol) && len(compaction.ResponseOutput) > 0 {
 			for _, item := range compaction.ResponseOutput {
-				input = append(input, append(json.RawMessage(nil), item...))
+				input = append(input, responseOutputItemToInput(item, compaction.Summary))
 			}
 		} else if strings.TrimSpace(compaction.Summary) != "" {
 			input = append(input, openai.ResponseInputMessage{
@@ -2410,7 +2445,7 @@ func checkpointMessagesToOpenAIResponseInput(checkpointMsgs []AgentMessage, lang
 		case "assistant":
 			if len(message.ResponseOutput) > 0 {
 				for _, item := range message.ResponseOutput {
-					input = append(input, append(json.RawMessage(nil), item...))
+					input = append(input, responseOutputItemToInput(item, message.Content))
 				}
 			} else {
 				content := message.Content
@@ -2462,6 +2497,40 @@ func checkpointMessagesToOpenAIResponseInput(checkpointMsgs []AgentMessage, lang
 	return input
 }
 
+func responseOutputItemToInput(item json.RawMessage, fallback string) any {
+	var output struct {
+		ID      string `json:"id"`
+		Type    string `json:"type"`
+		Content []struct {
+			Type    string `json:"type"`
+			Text    string `json:"text"`
+			Refusal string `json:"refusal"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(item, &output); err != nil || output.Type != "message" || strings.HasPrefix(output.ID, "msg_") {
+		return append(json.RawMessage(nil), item...)
+	}
+
+	var content strings.Builder
+	for _, part := range output.Content {
+		switch part.Type {
+		case "output_text":
+			content.WriteString(part.Text)
+		case "refusal":
+			content.WriteString(part.Refusal)
+		}
+	}
+	if content.Len() == 0 {
+		content.WriteString(fallback)
+	}
+	if content.Len() == 0 {
+		content.WriteString(" ")
+	}
+	return openai.ResponseInputMessage{
+		Type: "message", Role: openai.ChatMessageRoleAssistant, Content: content.String(),
+	}
+}
+
 // agentMessagesToEntries 把后端运行期累积的 AgentMessage 派生为最小 entries，
 // 用于中途崩溃恢复的 checkpoint 兜底（仅 user/assistant + reasoningContent/toolCalls，
 // 不含 thinking/confirm/snapshot —— 前端完成后会用完整 entries 覆盖）。
@@ -2499,6 +2568,7 @@ func agentMessagesToEntries(msgs []AgentMessage) []SessionEntry {
 				Type:                 "assistant",
 				Content:              m.Content,
 				ReasoningCont:        m.ReasoningContent,
+				NativeContent:        util.CloneAIMessageContent(m.NativeContent),
 				ResponseOutput:       util.CloneOpenAIResponseOutput(m.ResponseOutput),
 				ResponseOutputTokens: m.ResponseOutputTokens,
 				RoundID:              m.RoundID,
@@ -2515,14 +2585,14 @@ var (
 	errModelStreamIdleTimeout = errors.New("model stream idle timeout")
 )
 
-func createStreamWithRetry(ctx context.Context, client *openai.Client, req openai.ChatCompletionRequest, maxRetries int,
+func createStreamWithRetry(ctx context.Context, client *util.AIClient, req openai.ChatCompletionRequest, maxRetries int,
 	requestTimeout, streamIdleTimeout time.Duration, retryDelay func(string, int) time.Duration,
 	ch chan<- AgentEvent) (*util.OpenAICompletionStream, openai.ChatCompletionStreamResponse, context.CancelFunc, error) {
 	return createProtocolStreamWithRetry(ctx, client, util.OpenAIProtocolChatCompletions, req, nil, maxRetries,
 		requestTimeout, streamIdleTimeout, retryDelay, ch)
 }
 
-func createProtocolStreamWithRetry(ctx context.Context, client *openai.Client, protocol string,
+func createProtocolStreamWithRetry(ctx context.Context, client *util.AIClient, protocol string,
 	req openai.ChatCompletionRequest, responseInput []any, maxRetries int, requestTimeout, streamIdleTimeout time.Duration,
 	retryDelay func(string, int) time.Duration,
 	ch chan<- AgentEvent) (*util.OpenAICompletionStream, openai.ChatCompletionStreamResponse, context.CancelFunc, error) {
@@ -2563,7 +2633,7 @@ func createProtocolStreamWithRetry(ctx context.Context, client *openai.Client, p
 		if err == nil {
 			for {
 				firstResp, firstErr := recvStreamWithIdleTimeout(stream, streamIdleTimeout, streamCancel)
-				if firstErr != nil || !util.IsOpenAIResponsesProtocol(protocol) || len(firstResp.Choices) > 0 ||
+				if firstErr != nil || (!util.IsOpenAIResponsesProtocol(protocol) && !util.IsAnthropicMessagesProtocol(protocol)) || len(firstResp.Choices) > 0 ||
 					firstResp.Usage != nil {
 					if firstErr == nil || errors.Is(firstErr, io.EOF) {
 						return stream, firstResp, streamCancel, nil
@@ -2636,7 +2706,7 @@ func classifyRetry(err error) string {
 			return "rate_limit"
 		case strings.Contains(code, "timeout"):
 			return "timeout"
-		case code == "server_error" || code == "internal_error":
+		case code == "server_error" || code == "internal_error" || code == "overloaded_error" || code == "api_error":
 			return "server_error"
 		}
 		switch apiErr.HTTPStatusCode {
@@ -2644,7 +2714,7 @@ func classifyRetry(err error) string {
 			return "rate_limit"
 		case 408:
 			return "timeout"
-		case 500, 502, 503, 504:
+		case 500, 502, 503, 504, 529:
 			return "server_error"
 		default:
 			if apiErr.HTTPStatusCode >= 400 {

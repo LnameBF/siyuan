@@ -1,9 +1,12 @@
+import {isTableLikeView} from "../viewType";
 import {isAVRenderData} from "../renderData";
+import {getPublishAVView} from "../publishState";
 import {hasClosestByAttribute, hasClosestByClassName} from "../../../util/hasClosest";
 import {getPageSize} from "../groups";
 import {fetchSyncPost} from "../../../../util/fetch";
 import {Constants} from "../../../../constants";
 import {avRender, genTabHeaderHTML} from "../render";
+import {replaceAVContainer} from "../container";
 import {afterRenderGallery, renderGallery} from "../gallery/render";
 import {escapeAttr, escapeHtml} from "../../../../util/escape";
 import {getRowHTML} from "../row";
@@ -148,12 +151,13 @@ export const renderKanban = async (options: {
 
     let data: IAV = options.data;
     if (!data) {
+        const standalone = options.protyle.block.action?.includes(Constants.CB_GET_AV_NO_CREATE);
         const avPageSize = getPageSize(options.blockElement);
         const locateParams = getAVLocateParams(options.blockElement, !created && !snapshot);
         const common = {
             id: options.blockElement.getAttribute("data-av-id"),
-            blockID: options.blockElement.getAttribute("data-node-id"),
-            viewID: locateParams?.viewID || "",
+            blockID: standalone ? "" : options.blockElement.getAttribute("data-node-id"),
+            viewID: locateParams?.viewID || (window.siyuan.isPublish ? getPublishAVView(options.blockElement) : ""),
         };
         const paging = {
             pageSize: avPageSize.unGroupPageSize,
@@ -168,6 +172,7 @@ export const renderKanban = async (options: {
         }, undefined, false) : fetchSyncPost("/api/av/renderAttributeView", {
             ...common, ...paging,
             initialLayout: options.blockElement.getAttribute("data-av-type"),
+            createIfNotExist: !window.siyuan.isPublish && !standalone,
             targetItemID: locateParams?.targetItemID || "",
             targetGroupID: locateParams?.targetGroupID || "",
         }, undefined, false));
@@ -175,7 +180,9 @@ export const renderKanban = async (options: {
             return;
         }
         if (response.code !== 0 || !isAVRenderData(response.data)) {
-            failAVRender(options.blockElement, response);
+            if (failAVRender(options.blockElement, response)) {
+                await renderKanban(options);
+            }
             return;
         }
         data = response.data;
@@ -188,7 +195,7 @@ export const renderKanban = async (options: {
     }
     applyAVRenderContext(options.blockElement, data);
     prepareAVLocate(options.blockElement, data, resetData);
-    if (data.viewType === "table") {
+    if (isTableLikeView(data.viewType) || data.viewType === "calendar") {
         avRender(options.blockElement, options.protyle, options.cb, options.renderAll, data);
         return;
     }
@@ -233,14 +240,14 @@ export const renderKanban = async (options: {
         }
     });
     if (options.renderAll) {
-        options.blockElement.firstElementChild.outerHTML = `<div class="av__container fn__block">
+        replaceAVContainer(options.blockElement, `<div class="av__container fn__block">
     ${genTabHeaderHTML(data, resetData.isSearching || !!resetData.query,
         !options.protyle.disabled && !queryEmbedElement, options.blockElement, !queryEmbedElement)}
     <div class="av__kanban${isSelectGroup ? " av__kanban--bg" : ""}" data-group-options="${escapeAttr(JSON.stringify(groupOptions))}" style="${getCardStyle(view)}">
         ${bodyHTML}
     </div>
     <div class="av__cursor" contenteditable="true">${Constants.ZWSP}</div>
-</div>`;
+</div>`);
     } else {
         const kanbanElement = options.blockElement.querySelector(".av__kanban");
         kanbanElement.innerHTML = bodyHTML;

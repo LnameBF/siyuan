@@ -1,3 +1,5 @@
+import {getSidebarDock, getSidebarElement, popSidebar, switchToNextSidebarTab} from "./sidebar";
+import {getMobileSidebarConfig} from "./mobileBarsConfig";
 import {
     hasClosestBlock,
     hasClosestByAttribute,
@@ -23,13 +25,14 @@ import {getMobileBlockSelectionElement} from "./blockSelection";
 import {updateMultiSelectToolbar} from "./multiSelectToolbar";
 import {
     getOpeningSidebar,
-    getOpenSidebarReleaseAction,
     getSidebarClosingOffset,
     getSidebarOpeningOffset,
+    MOBILE_SIDEBAR_SWIPE_ACTIVATION_DISTANCE,
     type MobileSidebarSide,
     type MobileSwipeDirection,
     setSidebarSwipeState,
     shouldCloseGlobalMenu,
+    shouldCommitSidebarSwipe,
     shouldDragOpenSidebar,
 } from "./touchPanelGesture";
 
@@ -43,14 +46,12 @@ let firstXY: "x" | "y";
 let lastClientX: number;    // 和起始方向不一致时，记录最后一次的 clientX
 let scrollBlock: boolean;
 let isFirstMove = true;
+let swipeStartSidebar: MobileSidebarSide;
+let preventSwipe = false;
 // 长按进入多选的定时器
 let longPressTimer: number;
 let longPressBlockElement: HTMLElement;
 let longPressTouchRange: Range;
-
-const getSidebarElement = (side: MobileSidebarSide) => {
-    return document.getElementById(side === "left" ? "sidebar" : "sidebarRight");
-};
 
 const sideMaskElement = document.querySelector(".side-mask") as HTMLElement;
 
@@ -67,44 +68,6 @@ const getTargetSidebar = (target: HTMLElement): MobileSidebarSide | undefined =>
     }
     if (hasClosestByAttribute(target, "id", "sidebarRight", true)) {
         return "right";
-    }
-};
-
-const getSidebarDock = (sidebarElement: HTMLElement | null) => {
-    if (!sidebarElement) {
-        return;
-    }
-    const toolbarElement = sidebarElement.querySelector(".toolbar--border");
-    const tabElements = Array.from(toolbarElement?.querySelectorAll<HTMLElement>("[data-type]") || []);
-    const activeElement = tabElements.find(item =>
-        item.classList.contains("toolbar__icon--active") && !item.classList.contains("fn__none")) ||
-        tabElements.find(item => !item.classList.contains("fn__none"));
-    const type = activeElement?.dataset.type?.replace(/^sidebar-/, "").replace(/-tab$/, "");
-    if (toolbarElement && type) {
-        return {toolbarElement, type};
-    }
-};
-
-const popSidebar = (side: MobileSidebarSide, render = true) => {
-    activeBlur();
-    const sidebarElement = getSidebarElement(side);
-    if (!sidebarElement) {
-        return;
-    }
-    let dock: ReturnType<typeof getSidebarDock>;
-    if (render) {
-        dock = getSidebarDock(sidebarElement);
-        if (!dock) {
-            sidebarElement.style.removeProperty("transform");
-            closePanel();
-            return;
-        }
-    }
-    const otherSidebar = side === "left" ? "right" : "left";
-    getSidebarElement(otherSidebar)?.style.removeProperty("transform");
-    sidebarElement.style.transform = "translateX(0px)";
-    if (render) {
-        dock.toolbarElement.dispatchEvent(new CustomEvent("click", {detail: dock.type}));
     }
 };
 
@@ -184,7 +147,15 @@ export const handleTouchSelectionChange = () => {
 };
 
 export const handleTouchEnd = (event: TouchEvent) => {
+    if (event.defaultPrevented) {
+        resetTouchGesture();
+        handleTouchUp();
+        return;
+    }
     updateSidebarSwipeState();
+    if (preventSwipe) {
+        return;
+    }
     const target = event.target as HTMLElement;
     const currentTime = Date.now();
     const editor = getCurrentEditor();
@@ -265,6 +236,9 @@ export const handleTouchEnd = (event: TouchEvent) => {
         window.siyuan.mobile.editor.protyle.contentElement.style.overflow = "";
     }
 
+    const finalXDiff = Math.floor(clientX - event.changedTouches[0].clientX);
+    const finalYDiff = Math.floor(clientY - event.changedTouches[0].clientY);
+
     // 有些事件不经过 touchstart 和 touchmove，因此需设置为 null 不再继续执行
     clientX = null;
     // 有些事件不经过 touchmove
@@ -306,48 +280,83 @@ export const handleTouchEnd = (event: TouchEvent) => {
         return;
     }
 
-    let scrollEnable = false;
-    if (Date.now() - time < 1000) {
-        scrollEnable = true;
-    } else if (Math.abs(xDiff) > window.innerWidth / 3) {
-        scrollEnable = true;
-    }
+    const commitSidebarSwipe = firstXY === "x" && Math.abs(finalXDiff) > Math.abs(finalYDiff) && shouldCommitSidebarSwipe(
+        firstDirection,
+        finalXDiff,
+        currentTime - time,
+        window.innerWidth,
+    );
 
     if (targetSidebar) {
-        if (isXScroll && getOpenSidebarReleaseAction(targetSidebar, firstDirection, reversing) === "close") {
+        if (commitSidebarSwipe && shouldDragOpenSidebar(targetSidebar, firstDirection)) {
             closePanel();
         } else {
             popSidebar(targetSidebar, false);
+            if (commitSidebarSwipe) {
+                switchToNextSidebarTab(targetSidebar);
+            }
         }
         return;
     }
-    if (!scrollEnable || !isXScroll) {
+    if (!getMobileSidebarConfig().sidebarSwipe) {
+        return;
+    }
+    if (!commitSidebarSwipe) {
         closePanel();
         return;
     }
 
-    if (reversing) {
-        closePanel();
-    } else {
-        popSidebar(getOpeningSidebar(firstDirection));
+    popSidebar(getOpeningSidebar(firstDirection));
+};
+
+const resetTouchGesture = () => {
+    isFirstMove = true;
+    clientX = null;
+    clientY = null;
+    xDiff = undefined;
+    yDiff = undefined;
+    firstDirection = undefined;
+    firstXY = undefined;
+    lastClientX = undefined;
+    previousClientX = undefined;
+    swipeStartSidebar = undefined;
+    scrollBlock = false;
+    preventSwipe = false;
+    clearLongPress();
+};
+
+export const handleTouchCancel = () => {
+    updateSidebarSwipeState();
+    if (!isFirstMove) {
+        if (swipeStartSidebar) {
+            popSidebar(swipeStartSidebar, false);
+        } else {
+            closePanel();
+        }
     }
+    if (window.siyuan.mobile.editor) {
+        window.siyuan.mobile.editor.protyle.contentElement.style.overflow = "";
+    }
+    resetTouchGesture();
+    handleTouchUp();
 };
 
 export const handleTouchStart = (event: TouchEvent) => {
     updateSidebarSwipeState();
+    resetTouchGesture();
     time = Date.now();
     longPressBlockElement = undefined;
     longPressTouchRange = undefined;
     const target = event.touches[0].target as HTMLElement;
+    swipeStartSidebar = getTargetSidebar(target);
     if (0 < event.touches.length && (target.tagName === "VIDEO" || target.tagName === "AUDIO")) {
         // https://github.com/siyuan-note/siyuan/issues/14569
         activeBlur();
         return;
     }
-    // 可滚动面板内容优先处理原生滚动，避免斜向滑动触发侧栏关闭
-    if (hasClosestByAttribute(target, "data-prevent-swipe", null, true)) {
-        clientX = null;
-        clientY = null;
+    // 自行处理触摸的内容独占整轮手势，松手和取消时也不操作外层侧栏。
+    preventSwipe = !!hasClosestByAttribute(target, "data-prevent-swipe", null, true);
+    if (preventSwipe) {
         return;
     }
     // 存在其他拖拽元素时
@@ -369,12 +378,6 @@ export const handleTouchStart = (event: TouchEvent) => {
         window.siyuan.mobile.touchRange = getRangeByPoint(event.touches[0].clientX, event.touches[0].clientY);
     }
 
-    firstDirection = null;
-    xDiff = undefined;
-    yDiff = undefined;
-    lastClientX = undefined;
-    firstXY = undefined;
-    previousClientX = undefined;
     if (isIPhone() ||
         (event.touches[0].clientX > 8 && event.touches[0].clientX < window.innerWidth - 8)) {
         clientX = event.touches[0].clientX;
@@ -384,10 +387,7 @@ export const handleTouchStart = (event: TouchEvent) => {
         clientY = null;
         event.stopImmediatePropagation();
     }
-    isFirstMove = true;
-    scrollBlock = false;
     // 长按编辑器内块达到阈值时直接进入多选模式，无需抬手
-    clearLongPress();
     if (clientX && clientY && editor && !editor.protyle.toolbar.isMultiSelectMode()) {
         const blockElement = hasClosestBlock(target);
         if (blockElement && editor.protyle.wysiwyg.element.contains(blockElement) &&
@@ -447,6 +447,10 @@ const isHorizontalScrollable = (target: HTMLElement, xDiff: number) => {
 };
 
 export const handleTouchMove = (event: TouchEvent) => {
+    if (event.defaultPrevented) {
+        resetTouchGesture();
+        return;
+    }
     const target = event.target as HTMLElement;
     // 位移超过阈值说明是滑动而非长按，取消进入多选的定时器
     if (clientX && clientY &&
@@ -475,8 +479,10 @@ export const handleTouchMove = (event: TouchEvent) => {
         // 选中后扩选的情况
         const range = getSelection().getRangeAt(0);
         const currentEditor = getCurrentEditor();
+        const targetSidebar = getTargetSidebar(target);
         if (hasVisibleSelectionText(stripSemanticMarkersFromRangeText(range)) &&
-            currentEditor?.protyle.wysiwyg.element.contains(range.startContainer)) {
+            (currentEditor?.protyle.wysiwyg.element.contains(range.startContainer) ||
+                (targetSidebar && getSidebarElement(targetSidebar)?.contains(range.startContainer)))) {
             return;
         }
     }
@@ -485,20 +491,24 @@ export const handleTouchMove = (event: TouchEvent) => {
     yDiff = Math.floor(clientY - event.touches[0].clientY);
     // 上下滚动防止左右滑动
     if (!firstXY) {
-        firstXY = getTouchAxis(xDiff, yDiff, Constants.SIZE_DRAG_THRESHOLD);
+        const sidebarGesture = !hasClosestByAttribute(target, "id", "model", true) &&
+            !hasClosestByAttribute(target, "id", "menu", true);
+        firstXY = getTouchAxis(xDiff, yDiff, sidebarGesture ?
+            MOBILE_SIDEBAR_SWIPE_ACTIVATION_DISTANCE : Constants.SIZE_DRAG_THRESHOLD);
         if (!firstXY) {
             return;
         }
         firstDirection = xDiff > 0 ? "toLeft" : "toRight";
         if (firstXY === "x") {
-            const targetSidebar = getTargetSidebar(target);
             const menuElement = hasClosestByAttribute(target, "id", "menu", true);
-            if ((menuElement && !shouldCloseGlobalMenu(firstDirection, false)) ||
-                (targetSidebar && !shouldDragOpenSidebar(targetSidebar, firstDirection))) {
+            if (menuElement && !shouldCloseGlobalMenu(firstDirection, false)) {
                 firstXY = "y";
                 yDiff = undefined;
             }
         }
+    }
+    if (firstXY === "y") {
+        return;
     }
     if (typeof previousClientX !== "undefined") {
         if (firstDirection === "toRight") {
@@ -527,8 +537,12 @@ export const handleTouchMove = (event: TouchEvent) => {
         if (hasClosestByAttribute(target, "id", "menu", true)) {
             return;
         }
-        if (hasClosestByClassName(target, "agent-chat__messages", true)) {
-            // 消息内容可沿手势方向横向滚动时，本次手势持续交给内容，抵达边缘后可再次滑动返回。
+        if (!getTargetSidebar(target) && !getMobileSidebarConfig().sidebarSwipe) {
+            return;
+        }
+        if (getTargetSidebar(target) || hasClosestByClassName(target, "agent-chat__messages", true) ||
+            hasClosestByClassName(target, "protyle-db-attr__tabs", true)) {
+            // 内容可沿手势方向横向滚动时，本次手势持续交给内容，抵达边缘后可再次滑动操作侧栏。
             if (scrollBlock || isHorizontalScrollable(target, xDiff)) {
                 scrollBlock = true;
                 return;
@@ -575,6 +589,11 @@ export const handleTouchMove = (event: TouchEvent) => {
             }
         }
 
+        // 切换页签时保持侧栏展开，松手后按距离和速度判断是否切换。
+        const sidebar = getTargetSidebar(target);
+        if (sidebar && !shouldDragOpenSidebar(sidebar, firstDirection)) {
+            return;
+        }
         if (isFirstMove) {
             const openingSidebar = getOpeningSidebar(firstDirection);
             if (!getTargetSidebar(target) && !getSidebarDock(getSidebarElement(openingSidebar))) {

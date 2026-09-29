@@ -26,6 +26,12 @@ class Control {
 
 class Input extends Control {
     type = "text";
+    min = "";
+    max = "";
+    valid = true;
+    reportValidity() {
+        return this.valid;
+    }
 }
 
 const loadDialog = () => {
@@ -148,6 +154,12 @@ it("supports multiline values and lets autocomplete own keyboard events", () => 
     assert.equal(dialog.input.value, "one\ntwo");
     const autocomplete = open({title: "Tag", value: "tag", bindInput: false, onConfirm: () => {}});
     assert.equal(autocomplete.enter, undefined);
+});
+
+it("places caller controls before the primary input", () => {
+    const dialog = loadDialog()({title: "Jump", value: "2026-09-21", prefixContent: "<select data-mode></select>",
+        onConfirm: () => {}});
+    assert.ok(dialog.options.content.indexOf("data-mode") < dialog.options.content.indexOf("data-dialog-input"));
 });
 
 for (const file of ["src/history/doc.ts", "src/history/history.ts"]) {

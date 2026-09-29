@@ -213,7 +213,7 @@ const genKeymapListHtml = () => {
 
     return `<div class="b3-label file-tree config-keymap config-item" id="keymapList" data-keymap-filter="all">
     <div class="fn__flex">
-        <input id="keymapInput" class="b3-text-field fn__flex-1" placeholder="${window.siyuan.languages.searchPlaceholder}">
+        <input spellcheck="false" id="keymapInput" class="b3-text-field fn__flex-1" placeholder="${window.siyuan.languages.searchPlaceholder}">
         <div class="fn__space"></div>
         <label class="b3-form__icon fn__flex-1 searchByKeyLabel" style="overflow: visible">
             <svg class="b3-form__icon-icon"><use xlink:href="#iconKeymap"></use></svg>
@@ -362,7 +362,7 @@ const bindKeymapList = (root: HTMLElement) => {
         searchKeymapElement.dataset.keymap = "";
         resetKeymapList(keymapListElement);
     });
-    let recording: {row: HTMLElement; element: HTMLElement} | undefined;
+    let recording: { row: HTMLElement; element: HTMLElement } | undefined;
     const outsideRecording = (event: PointerEvent) => {
         if (recording && event.target !== recording.element &&
             !(event.target as HTMLElement).closest(".config-keymap__controls")) {
@@ -421,11 +421,15 @@ const bindKeymapList = (root: HTMLElement) => {
         event.stopPropagation();
         const row = chip.closest<HTMLElement>(".config-keymap__row");
         const menu = new Menu();
-        menu.addItem({label: window.siyuan.languages.keymapPrimary, click: () => {
-            const keys = getRowBindings(row);
-            keys.unshift(keys.splice(index, 1)[0]);
-            saveRow(row, keys);
-        }});
+        menu.addItem({
+            iconHTML: "",
+            label: window.siyuan.languages.keymapPrimary,
+            click: () => {
+                const keys = getRowBindings(row);
+                keys.unshift(keys.splice(index, 1)[0]);
+                saveRow(row, keys);
+            }
+        });
         menu.open({x: event.clientX, y: event.clientY});
     });
     keymapListElement.addEventListener("click", (event) => {
@@ -659,6 +663,11 @@ const refreshKeymapBindings = (root: HTMLElement) => {
             owners.set(normalized, matches);
         }
     }));
+    const agentSend = `general${Constants.ZWSP}agentSend`;
+    const mindmapShortcuts = new Set([
+        `editor${Constants.ZWSP}list${Constants.ZWSP}mindmapAddSibling`,
+        `editor${Constants.ZWSP}list${Constants.ZWSP}mindmapAddChild`,
+    ]);
     rows.forEach(row => {
         const keys = getRowBindings(row);
         const config = getKeymapItem(window.siyuan.config.keymap, row.dataset.key.split(Constants.ZWSP));
@@ -674,7 +683,14 @@ const refreshKeymapBindings = (root: HTMLElement) => {
         const reset = controls.querySelector<HTMLButtonElement>('[data-type="reset"]');
         reset.style.display = changed ? "" : "none";
         reset.tabIndex = changed ? 0 : -1;
-        const conflicts = keys.map(key => (owners.get(normalizeShortcutKey(key, isMac()))?.size || 0) > 1);
+        const conflicts = keys.map(key => Array.from(owners.get(normalizeShortcutKey(key, isMac())) || []).some(other => {
+            if (other === row) {
+                return false;
+            }
+            // AI 输入框和思维导图使用不同的按键作用域，同一默认键不会相互触发。
+            return !(row.dataset.key === agentSend && mindmapShortcuts.has(other.dataset.key) ||
+                other.dataset.key === agentSend && mindmapShortcuts.has(row.dataset.key));
+        }));
         row.dataset.conflict = String(conflicts.some(Boolean));
         row.querySelectorAll<HTMLElement>(".config-keymap__chip").forEach(chip => {
             chip.classList.toggle("config-keymap__chip--conflict", conflicts[Number(chip.dataset.index)]);

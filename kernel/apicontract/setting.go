@@ -14,6 +14,7 @@ type SettingAI struct {
 	MCP             *SettingMCP             `json:"mcp" api:"optional,nullable"`
 	Embedding       *SettingEmbedding       `json:"embedding" api:"optional,nullable"`
 	Rerank          *SettingRerank          `json:"rerank" api:"optional,nullable"`
+	Decision        *SettingDecision        `json:"decision" api:"optional,nullable"`
 	Agent           *SettingAgent           `json:"agent" api:"optional,nullable"`
 	Editing         *SettingEditing         `json:"editing" api:"optional,nullable"`
 	ImageGeneration *SettingImageGeneration `json:"imageGeneration" api:"optional,nullable"`
@@ -65,6 +66,14 @@ type SettingRerank struct {
 	RequestFormat  string `json:"requestFormat" api:"optional,nullable"`
 	Timeout        int    `json:"timeout" api:"optional,nullable"`
 	CandidateCount int    `json:"candidateCount" api:"optional,nullable"`
+}
+
+type SettingDecision struct {
+	Enabled  bool   `json:"enabled" api:"optional,nullable"`
+	Endpoint string `json:"endpoint" api:"optional,nullable"`
+	APIKey   string `json:"apiKey" api:"optional,nullable"`
+	Name     string `json:"name" api:"optional,nullable"`
+	Timeout  int    `json:"timeout" api:"optional,nullable"`
 }
 
 type SettingAgent struct {
@@ -209,24 +218,28 @@ type SettingEditor struct {
 	DynamicLoadBlocks               int                  `json:"dynamicLoadBlocks" api:"optional,nullable"`
 	Justify                         bool                 `json:"justify" api:"optional,nullable"`
 	RTL                             bool                 `json:"rtl" api:"optional,nullable"`
-	Spellcheck                      bool                 `json:"spellcheck" api:"optional,nullable"`
-	SpellcheckLanguages             []string             `json:"spellcheckLanguages" api:"optional,nullable"`
-	HashTagSearch                   *bool                `json:"hashTagSearch" api:"optional,nullable"`
-	OnlySearchForDoc                bool                 `json:"onlySearchForDoc" api:"optional,nullable"`
-	BacklinkExpandCount             int                  `json:"backlinkExpandCount" api:"optional,nullable"`
-	BackmentionExpandCount          int                  `json:"backmentionExpandCount" api:"optional,nullable"`
-	BacklinkMentionExclude          string               `json:"backlinkMentionExclude" api:"optional,nullable"`
-	BacklinkContainChildren         bool                 `json:"backlinkContainChildren" api:"optional,nullable"`
-	BacklinkHideReference           bool                 `json:"backlinkHideReference" api:"optional,nullable"`
-	BacklinkShowBottom              bool                 `json:"backlinkShowBottom" api:"optional,nullable"`
-	BacklinkSort                    *int                 `json:"backlinkSort" api:"optional,nullable"`
-	BackmentionSort                 *int                 `json:"backmentionSort" api:"optional,nullable"`
-	HeadingNumber                   bool                 `json:"headingNumber" api:"optional,nullable"`
-	HeadingNumberFormat             string               `json:"headingNumberFormat" api:"optional,nullable"`
-	HeadingEmbedMode                int                  `json:"headingEmbedMode" api:"optional,nullable"`
-	PasteURLAutoConvert             bool                 `json:"pasteURLAutoConvert" api:"optional,nullable"`
-	DragHTMLFileToIframe            bool                 `json:"dragHTMLFileToIframe" api:"optional,nullable"`
-	Markdown                        *SettingMarkdown     `json:"markdown" api:"optional,nullable"`
+	// AutoDirection 默认关闭；启用后段落和标题按首个强方向字符排版，手动方向优先，不改变列表和表格布局。
+	AutoDirection           bool             `json:"autoDirection" api:"optional,nullable"`
+	Spellcheck              bool             `json:"spellcheck" api:"optional,nullable"`
+	SpellcheckLanguages     []string         `json:"spellcheckLanguages" api:"optional,nullable"`
+	HashTagSearch           *bool            `json:"hashTagSearch" api:"optional,nullable"`
+	OnlySearchForDoc        bool             `json:"onlySearchForDoc" api:"optional,nullable"`
+	BacklinkExpandCount     int              `json:"backlinkExpandCount" api:"optional,nullable"`
+	BackmentionExpandCount  int              `json:"backmentionExpandCount" api:"optional,nullable"`
+	BacklinkMentionExclude  string           `json:"backlinkMentionExclude" api:"optional,nullable"`
+	BacklinkContainChildren bool             `json:"backlinkContainChildren" api:"optional,nullable"`
+	BacklinkHideReference   bool             `json:"backlinkHideReference" api:"optional,nullable"`
+	BacklinkShowBottom      bool             `json:"backlinkShowBottom" api:"optional,nullable"`
+	BacklinkSort            *int             `json:"backlinkSort" api:"optional,nullable"`
+	BacklinkGlobalSort      int              `json:"backlinkGlobalSort" api:"optional,nullable"`
+	BacklinkBlockSort       int              `json:"backlinkBlockSort" api:"optional,nullable"`
+	BackmentionSort         *int             `json:"backmentionSort" api:"optional,nullable"`
+	HeadingNumber           bool             `json:"headingNumber" api:"optional,nullable"`
+	HeadingNumberFormat     string           `json:"headingNumberFormat" api:"optional,nullable"`
+	HeadingEmbedMode        int              `json:"headingEmbedMode" api:"optional,nullable"`
+	PasteURLAutoConvert     bool             `json:"pasteURLAutoConvert" api:"optional,nullable"`
+	DragHTMLFileToIframe    bool             `json:"dragHTMLFileToIframe" api:"optional,nullable"`
+	Markdown                *SettingMarkdown `json:"markdown" api:"optional,nullable"`
 }
 
 type SettingEditorFont struct {
@@ -311,6 +324,9 @@ type SettingFileTree struct {
 }
 
 type SettingSearch struct {
+	// 思维导图默认开启，思维导图项默认关闭；更新时省略或传 null 保留当前值。
+	Mindmap                      *bool `json:"mindmap" api:"optional,nullable"`
+	MindmapItem                  *bool `json:"mindmapItem" api:"optional,nullable"`
 	CustomBlock                  *bool `json:"customBlock" api:"optional,nullable"`
 	Document                     bool  `json:"document" api:"optional,nullable"`
 	Heading                      bool  `json:"heading" api:"optional,nullable"`

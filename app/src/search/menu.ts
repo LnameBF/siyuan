@@ -6,7 +6,7 @@ import {Constants} from "../constants";
 import {showMessage} from "../dialog/message";
 import {fetchPost} from "../util/fetch";
 import {escapeHtml} from "../util/escape";
-import {isSensitiveSearchConfig, setStorageVal} from "../protyle/util/compatibility";
+import {isDisabledFeature, isSensitiveSearchConfig, setStorageVal} from "../protyle/util/compatibility";
 import {confirmDialog} from "../dialog/confirmDialog";
 import {goUnRef, updateSearchResult} from "../mobile/menu/search";
 import {bindSearchSubtypeFilters} from "./subTypes";
@@ -18,6 +18,7 @@ export const filterMenu = (config: Config.IUILayoutTabSearchConfig, cb: () => vo
     const filterDialog = new Dialog({
         title: window.siyuan.languages.searchType,
         content: `<div class="b3-dialog__content">
+    ${(["mindmap", "mindmapItem"] as const).map(type => `<label class="fn__flex b3-label"><svg class="ft__on-surface svg fn__flex-center"><use xlink:href="#${type === "mindmap" ? "iconMindmap" : "iconListItem"}"></use></svg><span class="fn__space"></span><div class="fn__flex-1 fn__flex-center">${window.siyuan.languages[type]} <sup>[1]</sup></div><input class="b3-switch fn__flex-center" data-type="${type}" type="checkbox"${config.types[type] ? " checked" : ""}></label>`).join("")}
     <label class="fn__flex b3-label">
         <svg class="ft__on-surface svg fn__flex-center"><use xlink:href="#iconPlugin"></use></svg>
         <span class="fn__space"></span>
@@ -338,7 +339,7 @@ export const queryMenu = (config: Config.IUILayoutTabSearchConfig, cb: () => voi
             cb();
         }
     }).element);
-    if (window.siyuan.config.ai.embedding.enabled) {
+    if (!isDisabledFeature("ai") && window.siyuan.config.ai.embedding.enabled) {
         window.siyuan.menus.menu.append(new MenuItem({
             icon: "iconSparkles",
             label: window.siyuan.languages.semanticSearch,
@@ -536,7 +537,7 @@ export const moreMenu = async (config: Config.IUILayoutTabSearchConfig,
             updateSearchResult(config, element, true);
         }
     }];
-    if (window.siyuan.config.ai.embedding.enabled) {
+    if (!isDisabledFeature("ai") && window.siyuan.config.ai.embedding.enabled) {
         searchMethodSubmenu.push({
             icon: "iconSparkles",
             label: window.siyuan.languages.semanticSearch,

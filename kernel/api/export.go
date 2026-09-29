@@ -610,7 +610,7 @@ var exportPreviewHTML = contractHandler(apicontract.ExportPreviewHTML, func(c *g
 	}
 	addTitle, customTitle := exportTitleOptions(request.ExportTitleOptions)
 	mergeHeadingOptions := model.MergeHeadingOptions{DocHeadingMode: mergeDocHeadingMode, ContentHeadingMode: mergeContentHeadingMode}
-	name, content, node := model.ExportHTMLWithTitle(id, "", true, keepFold, merge, addTitle, customTitle, mergeHeadingOptions)
+	name, content, node := model.ExportPreviewHTMLWithTitle(id, keepFold, merge, addTitle, customTitle, request.KeepJSEmbed, mergeHeadingOptions)
 	// 导出 PDF 预览时点击块引转换后的脚注跳转不正确 https://github.com/siyuan-note/siyuan/issues/5894
 	content = strings.ReplaceAll(content, "http://"+util.LocalHost+":"+util.ServerPort+"/#", "#")
 
@@ -752,6 +752,7 @@ var exportPreview = contractHandler(apicontract.ExportPreview, func(c *gin.Conte
 	}
 
 	isReadOnlyRole := model.IsReadOnlyRoleContext(c)
+	avPublishFilter := model.NewAVExportPublishFilter(c)
 	var publishAccess model.PublishAccess
 	var accessChecker model.EmbedBlockAccessChecker
 	if isReadOnlyRole {
@@ -760,7 +761,7 @@ var exportPreview = contractHandler(apicontract.ExportPreview, func(c *gin.Conte
 			return model.CheckBlockIdAccessableByPublishAccess(c, publishAccess, blockID)
 		}
 	}
-	stdHTML := model.ExportPreview(id, fillCSSVar, accessChecker)
+	stdHTML := model.ExportPreview(id, fillCSSVar, avPublishFilter, accessChecker)
 	if isReadOnlyRole {
 		bt := treenode.GetBlockTree(id)
 		if bt != nil {

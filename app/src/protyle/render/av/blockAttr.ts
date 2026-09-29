@@ -188,6 +188,10 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
             let dragBlockElement: HTMLElement;
             let removeEditorRange: Range | undefined;
             element.addEventListener("dragstart", (event: DragEvent) => {
+                if (protyle.disabled) {
+                    event.preventDefault();
+                    return;
+                }
                 const target = event.target as HTMLElement;
                 window.siyuan.dragElement = target.parentElement;
                 window.siyuan.dragElement.style.opacity = ".38";
@@ -259,6 +263,9 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
                 }
             });
             element.addEventListener("dragover", (event: DragEvent) => {
+                if (protyle.disabled) {
+                    return;
+                }
                 const target = event.target as HTMLElement;
                 let targetElement: HTMLElement | false;
                 if (event.dataTransfer.types.includes("Files")) {
@@ -314,6 +321,9 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
                 }
             });
             element.addEventListener("paste", (event) => {
+                if (protyle.disabled) {
+                    return;
+                }
                 const files = event.clipboardData.files;
                 const assetCellElement = element.querySelector<HTMLElement>('.custom-attr__avvalue[data-type="mAsset"][data-active="true"]');
                 if (assetCellElement && document.querySelector(".av__panel .b3-form__upload")) {
@@ -344,6 +354,17 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
             });
             element.addEventListener("click", (event) => {
                 if (handleTemplateInteraction(protyle, event) || handleRichTextInteraction(protyle, event)) {
+                    return;
+                }
+                const urlElement = (event.target as HTMLElement).closest<HTMLAnchorElement>(
+                    '[data-av-id][data-type="url"] > a.block__icon');
+                if (urlElement) {
+                    const url = urlElement.parentElement.querySelector<HTMLInputElement>("input")?.value;
+                    if (url) {
+                        openLink(protyle.app, url, event, event.ctrlKey || event.metaKey);
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
                     return;
                 }
                 const databaseElement = hasClosestByClassName(event.target as HTMLElement, "popover__block");
@@ -392,6 +413,9 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
                 }
                 const removeElement = hasClosestByAttribute(event.target as HTMLElement, "data-type", "remove");
                 if (removeElement) {
+                    if (protyle.disabled) {
+                        return;
+                    }
                     const selection = document.getSelection();
                     const currentRange = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
                     const editorRange = removeEditorRange || getEditorFocusRange(protyle.wysiwyg.element,
@@ -465,6 +489,9 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
                         const restoreEditorRange = () => restoreEditorFocusRange(protyle.wysiwyg.element,
                             editorRange);
                         confirmDialog(window.siyuan.languages.removeAV, window.siyuan.languages.confirmDelete + "?", () => {
+                            if (protyle.disabled) {
+                                return;
+                            }
                             removeElement.setAttribute("disabled", "true");
                             transaction(protyle, doOperations, undoOperations.length > 0 ? undoOperations : undefined, {
                                 callback: () => {
@@ -494,6 +521,10 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
             element.innerHTML = html;
         }
         renderAVRichTextElements(element);
+        element.dataset.readonly = String(Boolean(protyle.disabled));
+        element.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach(item => {
+            item.readOnly = Boolean(protyle.disabled);
+        });
         tables.forEach((table: IAVAttributeTableData) => {
             const blockElement = element.querySelector<HTMLElement>(`[data-attribute-id="${id}"][data-av-id="${table.avID}"]`);
             if (blockElement) {
@@ -503,6 +534,9 @@ export const renderAVAttribute = (element: HTMLElement, id: string, protyle: IPr
         if (element.dataset.avInputBound !== "true") {
             element.dataset.avInputBound = "true";
             element.addEventListener("change", (event) => {
+                if (protyle.disabled) {
+                    return;
+                }
                 const item = event.target as HTMLInputElement | HTMLTextAreaElement;
                 if (!item.classList.contains("b3-text-field--text") || !item.parentElement.dataset.avId) {
                     return;
@@ -582,6 +616,19 @@ const renderAttributeViewBacklinks = (element: HTMLElement, id: string, renderID
 
 const openEdit = (protyle: IProtyle, element: HTMLElement, event: MouseEvent) => {
     let target = event.target as HTMLElement;
+    if (protyle.disabled) {
+        const assetElement = target.closest<HTMLElement>(".av__celltext--url, .av__cellassetimg");
+        if (event.type === "click" && assetElement) {
+            if (assetElement.tagName === "IMG") {
+                previewImages([removeCompressURL(assetElement.getAttribute("src"))]);
+            } else if (assetElement.dataset.url) {
+                openLink(protyle.app, assetElement.dataset.url, event, event.ctrlKey || event.metaKey);
+            }
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        return;
+    }
     const valueElement = hasClosestByClassName(target, "custom-attr__avvalue");
     const blockElement = hasClosestBlock(valueElement || target);
     if (!blockElement) {

@@ -1,5 +1,6 @@
 import type {BlockQueryRequestInput} from "../../types/api";
 import {isAbove} from "../../util/zIndex";
+import {stripSemanticMarkersFromRangeText} from "../../protyle/util/inlineElementMarker";
 import {
     copyPlainText,
     isMac,
@@ -82,6 +83,7 @@ import {cancelDrag} from "./dragover";
 import {bindAVPanelKeydown} from "../../protyle/render/av/keydown";
 import {formatPainter} from "../../protyle/toolbar/FormatPainter";
 import {adjustEditorFontSize, type TEditorFontSizeAction} from "../../util/editorFontSize";
+import {areProtylePluginExtensionsEnabled} from "../../protyle/runtimeCapabilities";
 
 const EDITOR_FONT_SIZE_COMMANDS: Array<{
     command: "increaseEditorFontSize" | "decreaseEditorFontSize" | "resetEditorFontSize",
@@ -584,7 +586,7 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
             });
             copyPlainText(html.trimEnd());
         } else {
-            copyPlainText(range.toString());
+            copyPlainText(stripSemanticMarkersFromRangeText(range));
         }
         event.preventDefault();
         return true;
@@ -629,6 +631,22 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
                 copyTextByType([nodeElement.getAttribute("data-node-id")], "ref");
             }
         }
+        return true;
+    }
+    // 只读正文的快捷键使用所属编辑器上下文，插件命令仍遵循自身的可用性判断。
+    if (protyle.disabled && !isFileFocus && !event.isComposing &&
+        (target === document.body || protyle.wysiwyg.element.contains(target)) &&
+        areProtylePluginExtensionsEnabled(protyle) &&
+        dispatchPluginShortcut(app, event, "editorShortcut", () => {
+            const context = captureCommandContext({app, source: "editorShortcut", protyle, range});
+            // 无有效正文选区时，不携带上下文采集回退得到的历史选区。
+            if (!range) {
+                context.range = undefined;
+                context.block = undefined;
+                context.tableCell = undefined;
+            }
+            return context;
+        })) {
         return true;
     }
     if (hasClosestByClassName(target, "protyle-title__input")) {
@@ -761,7 +779,7 @@ const fileTreeKeydown = (app: App, event: KeyboardEvent) => {
         return true;
     }
 
-    if (matchHotKey("⌘/", event)) {
+    if (matchHotKey(window.siyuan.config.keymap.general.openContextMenu, event)) {
         const liRect = liElements[0].getBoundingClientRect();
         if (isFile) {
             initFileMenu(app, notebookId, pathString, liElements[0]).popup({
@@ -1088,6 +1106,14 @@ const panelTreeKeydown = (app: App, event: KeyboardEvent) => {
     if (!matchCollapse && !matchExpand &&
         !event.key.startsWith("Arrow") && event.key !== "Enter") {
         return false;
+    }
+    if (!event.repeat && (matchCollapse || matchExpand) && activePanelElement.classList.contains("sy__outline")) {
+        const outline = getAllModels().outline.find(item => item.element.parentElement === activePanelElement);
+        if (outline) {
+            outline.setAllExpanded(!matchCollapse);
+            event.preventDefault();
+            return true;
+        }
     }
     if (!event.repeat && matchCollapse) {
         const collapseElement = activePanelElement.querySelector('.block__icon[data-type="collapse"]');
@@ -1744,6 +1770,14 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
             command: "recentClosed",
             app
         });
+        event.preventDefault();
+        return;
+    }
+
+    if (matchHotKey(window.siyuan.config.keymap.general.switchTab, event)) {
+        if (!event.repeat) {
+            globalCommand("switchTab", app);
+        }
         event.preventDefault();
         return;
     }

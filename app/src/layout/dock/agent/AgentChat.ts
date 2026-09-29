@@ -24,6 +24,7 @@ import {
     findAgentUserEntryIndex,
     getAgentThinkingDisplaySeconds,
     getAgentThinkingToolGroups,
+    getAgentTurnContent,
     hasAgentExecutedToolsAfter,
     hasAgentModelSpecificContext,
     hasAgentThinkingStepDetails,
@@ -41,13 +42,12 @@ import {
     renderToolsLineHTML,
     renderWelcomeHTML
 } from "./AgentMessageRenderer";
-import {bindThinkingCardToggle} from "../../../ai/thinkingCard";
-import {getAgentReasoningEffortOptions} from "./AgentReasoning";
+import {bindThinkingCardToggle, updateThinkingBody} from "../../../ai/thinkingCard";
+import {getAgentReasoningEffort, getAgentReasoningEffortOptions, setAgentReasoningEffort} from "./AgentReasoning";
 import {mountGroupedModelPicker, type IGroupedModelPicker} from "../../../config/tabs/ai/aiProviderUi";
 import {AI_CONFIG_CHANGED_EVENT} from "../../../config/tabs/ai/aiRuntime";
 import {
     AGENT_STREAMING_MARKDOWN_CHANGED_EVENT,
-    AGENT_STREAMING_MARKDOWN_KEY,
     isAgentStreamingMarkdownEnabled
 } from "../../../config/tabs/ai/agentStreamingMarkdown";
 import {AgentStreamingMarkdown} from "./AgentStreamingMarkdown";
@@ -107,6 +107,7 @@ type SessionEntry =
     type: "assistant";
     content?: string;
     reasoningContent?: string;
+    nativeContent?: {protocol: string; version: number; blocks: Array<Record<string, unknown>>};
     responseOutput?: Array<Record<string, unknown>>;
     responseOutputTokens?: number;
     roundID?: string;
@@ -260,9 +261,9 @@ export class AgentChat extends Model {
     private selectedModel: string;
     private defaultModelID = "";
     private modelOptions: Array<{ id: string; name: string }> = [];
-    // 推理努力度（iconBrain + 菜单），仅实例记忆，刷新后回到默认。
+    // 思考等级菜单使用本地保存的偏好初始化。
     private reasoningEffortButton: HTMLButtonElement;
-    private selectedReasoningEffort = "";
+    private selectedReasoningEffort = getAgentReasoningEffort();
     private permissionButton: HTMLButtonElement;
     private permissionMode: AgentPermissionMode = "confirm";
     private buttonOptions: HTMLElement;
@@ -316,11 +317,6 @@ export class AgentChat extends Model {
         window.addEventListener(AI_CONFIG_CHANGED_EVENT, this.checkConfigChangedHandler);
         window.addEventListener("focus", this.checkConfigChangedHandler);
         window.addEventListener(AGENT_STREAMING_MARKDOWN_CHANGED_EVENT, this.checkStreamingMarkdownChanged);
-        window.addEventListener("storage", (event) => {
-            if (event.key === AGENT_STREAMING_MARKDOWN_KEY || event.key === null) {
-                this.checkStreamingMarkdownChanged();
-            }
-        });
         // 设置对话框是 SiYuan 内部模态，关闭时 window 不失焦，focus 事件不触发。
         // 监听 body 子节点变化，当含 .config__panel 的设置 dialog 被移除时即时刷新。
         this.settingDialogObserver = new MutationObserver(() => {
@@ -458,6 +454,13 @@ export class AgentChat extends Model {
         this.initPermissionMenu();
         this.initReasoningEffortMenu();
         this.scrollBottomBtn = panel.querySelector(".agent-chat__scroll-bottom") as HTMLElement;
+        this.messagesContainer.addEventListener("wheel", (event: WheelEvent) => {
+            if (event.deltaY < 0) {
+                this.programmaticScrollGeneration++;
+                this.programmaticScroll = false;
+                this.userScrolledUp = true;
+            }
+        }, {passive: true});
         this.messagesContainer.addEventListener("scroll", () => {
             const {scrollTop, scrollHeight, clientHeight} = this.messagesContainer;
             // 仅在面板有效展开时记录滚动位置：dock 折叠过渡期间容器尺寸归零、浏览器把 scrollTop
@@ -753,7 +756,7 @@ export class AgentChat extends Model {
         });
     }
 
-    // 初始化思考强度菜单：提供各供应商使用的标准档位，选择结果仅在当前实例中生效。
+    // 初始化思考强度菜单：提供各供应商使用的标准档位，并在本地保存选择结果。
     private initReasoningEffortMenu() {
         const options = getAgentReasoningEffortOptions(window.siyuan.languages);
         const updateLabel = () => {
@@ -774,6 +777,7 @@ export class AgentChat extends Model {
                     current: option.value === this.selectedReasoningEffort,
                     click: () => {
                         this.selectedReasoningEffort = option.value;
+                        setAgentReasoningEffort(option.value);
                         updateLabel();
                     },
                 });
@@ -3165,16 +3169,17 @@ export class AgentChat extends Model {
         }
 
         this.renderedToolNames[name] = true;
-        const lastElement = body.lastElementChild as HTMLElement;
-        if (lastElement?.classList.contains("agent-chat__thinking-tools-line")) {
-            const toolElement = document.createElement("span");
-            toolElement.className = "agent-chat__thinking-tool agent-chat__thinking-tool--running";
-            toolElement.textContent = name;
-            lastElement.appendChild(toolElement);
-        } else {
-            body.insertAdjacentHTML("beforeend", renderToolsLineHTML([{name, running: true}]));
-        }
-        body.scrollTop = body.scrollHeight;
+        updateThinkingBody(body, () => {
+            const lastElement = body.lastElementChild as HTMLElement;
+            if (lastElement?.classList.contains("agent-chat__thinking-tools-line")) {
+                const toolElement = document.createElement("span");
+                toolElement.className = "agent-chat__thinking-tool agent-chat__thinking-tool--running";
+                toolElement.textContent = name;
+                lastElement.appendChild(toolElement);
+            } else {
+                body.insertAdjacentHTML("beforeend", renderToolsLineHTML([{name, running: true}]));
+            }
+        });
         this.scrollToBottom();
     }
 
@@ -3219,7 +3224,7 @@ export class AgentChat extends Model {
 
         const el = this.createTodoElement(result, SessionStore.newSessionId());
         this.insertBeforeAI(el);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.hasInterveningCard = true;
     }
 
@@ -3433,7 +3438,7 @@ export class AgentChat extends Model {
         this.pendingReasoningUpdate = false;
         cancelAnimationFrame(this.reasoningRafId);
         this.reasoningRafId = 0;
-        const thinking = this.pendingReasoningElement;
+        const thinking = this.pendingReasoningElement as HTMLElement | null;
         this.pendingReasoningElement = null;
         if (!thinking) {
             return;
@@ -3441,16 +3446,13 @@ export class AgentChat extends Model {
         const allReasoning = thinking.querySelectorAll(".agent-chat__thinking-reasoning-text");
         const reasoningEl = allReasoning[allReasoning.length - 1] as HTMLElement;
         if (reasoningEl) {
-            reasoningEl.textContent = this.currentThinkingReasoningContent;
+            updateThinkingBody(thinking, () => {
+                reasoningEl.textContent = this.currentThinkingReasoningContent;
+            });
             const latestElement = thinking.parentElement?.querySelector(".agent-chat__thinking-latest") as HTMLElement | null;
             if (latestElement) {
                 latestElement.textContent = this.currentThinkingReasoningContent.replace(/\s+/g, " ").trim();
                 latestElement.scrollLeft = latestElement.scrollWidth;
-            }
-            // 预览态固定高度，滚到底部让最新 reasoning 内容可见。
-            const body = reasoningEl.closest(".agent-chat__thinking-body") as HTMLElement | null;
-            if (body) {
-                body.scrollTop = body.scrollHeight;
             }
         }
     }
@@ -3476,7 +3478,9 @@ export class AgentChat extends Model {
         copyBtn.innerHTML = '<svg><use xlink:href="#iconCopy"></use></svg>';
         copyBtn.addEventListener("click", (e: Event) => {
             e.stopPropagation();
-            void copyAgentText(content);
+            const userEntryID = this.findUserEntryIDBeforeElement(el);
+            const turnContent = userEntryID && getAgentTurnContent(buildAgentPresentationEntries(this.entries), userEntryID);
+            void copyAgentText(turnContent || content);
         });
         actions.appendChild(copyBtn);
 
@@ -3658,7 +3662,7 @@ export class AgentChat extends Model {
             if (showActions) {
                 this.addCopyButton(this.currentAIElement, undefined, ts);
             }
-            this.scrollToBottom(!this.streamingMarkdownEnabled);
+            this.scrollToBottom();
         }
     }
 
@@ -3696,7 +3700,7 @@ export class AgentChat extends Model {
             if (activeThinkCard?.isConnected) {
                 this.scrollToThinkingCardBelow(activeThinkCard);
             } else {
-                this.scrollToBottom(true);
+                this.scrollToBottom();
             }
         } else if (this.currentAIElement) {
             // 场景二：普通流式元素，一次性完整渲染并补齐增强功能。
@@ -3869,7 +3873,7 @@ export class AgentChat extends Model {
         }
         this.currentAIElement = null;
         this.renderError(message);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.flushThinkingStep();
     }
 
@@ -3890,7 +3894,7 @@ export class AgentChat extends Model {
         el.className = "agent-chat__msg agent-chat__msg--retry";
         el.innerHTML = renderRetryCardHTML(attempt, maxRetries);
         this.insertBeforeAI(el);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.hasInterveningCard = true;
     }
 
@@ -3922,7 +3926,7 @@ export class AgentChat extends Model {
         });
         // 快照在工具执行前产生，应显示在触发写操作的思考和确认内容之后。
         this.insertBeforeAI(el);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.hasInterveningCard = true;
     }
 
@@ -4131,7 +4135,7 @@ export class AgentChat extends Model {
             });
         }
         this.insertBeforeAI(el);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.hasInterveningCard = true;
         if (notify) {
             if (this.host.notify) {
@@ -4348,7 +4352,7 @@ export class AgentChat extends Model {
         }
 
         this.insertBeforeAI(el);
-        this.scrollToBottom(true);
+        this.scrollToBottom();
         this.hasInterveningCard = true;
     }
 
@@ -4866,7 +4870,7 @@ export class AgentChat extends Model {
     // 其下方留出空间承载即将/已开始流式的正文。delay 用于等待卡片折叠的 max-height 过渡（约 0.2s）完成。
     private scrollToThinkingCardBelow(card: HTMLElement, delay = 220) {
         const align = () => {
-            if (!card.isConnected) {
+            if (!card.isConnected || this.userScrolledUp) {
                 return;
             }
             // 用 getBoundingClientRect 计算卡片底部相对滚动容器的偏移，
@@ -4960,6 +4964,7 @@ export class AgentChat extends Model {
             "dailynote": L.agentCatDailynote, "import": L.agentCatImport,
             "repo": L.agentCatRepo, "history": L.agentCatHistory,
             "sync": L.agentCatSync, "database": L.agentCatDatabase,
+            "bazaar": L.bazaar,
         };
         return m[name] || name || L.agentCatDefault;
     }

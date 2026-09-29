@@ -253,6 +253,7 @@ export const movePathTo = (options: {
     cb: (toPath: string[], toNotebook: string[]) => void,
     paths?: string[],
     range?: Range,
+    restoreFocus?: () => void,
     title?: string,
     flashcard: boolean
     rootIDs?: string[],
@@ -277,7 +278,7 @@ export const movePathTo = (options: {
         <svg class="svg--mid"><use xlink:href="#iconSearch"></use></svg>
         <svg class="svg--smaller"><use xlink:href="#iconDown"></use></svg>
     </span>
-    <input class="b3-text-field fn__block" style="padding-left: 42px;" value="" placeholder="${window.siyuan.languages.searchPlaceholder}">
+    <input spellcheck="false" class="b3-text-field fn__block" style="padding-left: 42px;" value="" placeholder="${window.siyuan.languages.searchPlaceholder}">
 </div>
 <ul id="foldList" class="fn__flex-1 fn__none b3-list b3-list--background${isMobile() ? " b3-list--mobile" : ""}" style="overflow: auto;position: relative"></ul>
 <div id="foldTree" class="fn__flex-1${isMobile() ? " b3-list--mobile" : ""}" style="overflow: auto;position: relative"></div>
@@ -289,7 +290,9 @@ export const movePathTo = (options: {
         width: isMobile() ? "92vw" : "50vw",
         height: isMobile() ? "80vh" : "70vh",
         destroyCallback() {
-            if (options.range) {
+            if (options.restoreFocus) {
+                options.restoreFocus();
+            } else if (options.range) {
                 focusByRange(options.range);
             }
         }
@@ -367,6 +370,9 @@ export const movePathTo = (options: {
                 dueFlashcardCount: string,
                 flashcardCount: string
             }) => {
+                if (!isMoveTargetAllowed(options.sourceNotebookIds, item.box)) {
+                    return;
+                }
                 let countHTML = "";
                 if (options.flashcard) {
                     countHTML = `<span class="counter counter--right b3-tooltips b3-tooltips__w" aria-label="${window.siyuan.languages.flashcardNewCard}">${item.newFlashcardCount}</span>

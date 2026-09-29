@@ -108,6 +108,14 @@ type GetAttributeViewRelationCandidatesRequest struct {
 	Page             *float64 `json:"page" api:"optional,nullable"`
 	PageSize         *float64 `json:"pageSize" api:"optional,nullable"`
 	SelectedBlockIDs []string `json:"selectedBlockIDs" api:"optional,nullable,filterstrings"`
+	// Sort 仅对本次候选查询排序，在搜索过滤后、分页前应用；不修改数据库视图或已选条目的顺序。
+	// 省略时按创建时间倒序；指定时 column 必须属于关联数据库，order 为 ASC 或 DESC。
+	Sort *AVRelationCandidateSort `json:"sort" api:"optional,nullable"`
+}
+
+type AVRelationCandidateSort struct {
+	Column string `json:"column"`
+	Order  string `json:"order"`
 }
 
 type AppendAttributeViewDetachedBlocksWithValuesRequest struct {
@@ -194,14 +202,18 @@ type GetAttributeViewFieldViewsRequest struct {
 }
 
 type CreateAttributeViewItemRequest struct {
-	AvID       string `json:"avID"`
-	BlockID    string `json:"blockID"`
-	ViewID     string `json:"viewID" api:"optional,nullable"`
-	TemplateID string `json:"templateID" api:"optional,nullable"`
-	PreviousID string `json:"previousID" api:"optional,nullable"`
-	GroupID    string `json:"groupID" api:"optional,nullable"`
-	App        string `json:"app" api:"optional,nullable"`
-	Session    string `json:"session" api:"optional,nullable"`
+	// 日历新条目的全天日期，单位为毫秒；仅支持绑定普通 date 字段的日历视图。
+	// 覆盖模板中该字段的值，与模板其他字段及条目创建共用一个可撤销事务。
+	// 绑定 created 或 updated 时拒绝指定日期；省略或传 null 时沿用常规创建流程。
+	CalendarDate *int64 `json:"calendarDate" api:"optional,nullable"`
+	AvID         string `json:"avID"`
+	BlockID      string `json:"blockID"`
+	ViewID       string `json:"viewID" api:"optional,nullable"`
+	TemplateID   string `json:"templateID" api:"optional,nullable"`
+	PreviousID   string `json:"previousID" api:"optional,nullable"`
+	GroupID      string `json:"groupID" api:"optional,nullable"`
+	App          string `json:"app" api:"optional,nullable"`
+	Session      string `json:"session" api:"optional,nullable"`
 }
 
 type CreateAttributeViewItemWithMarkdownRequest struct {
@@ -239,14 +251,18 @@ type SearchAttributeViewRequest struct {
 }
 
 type RenderSnapshotAttributeViewRequest struct {
-	Snapshot      string `json:"snapshot"`
-	ID            string `json:"id"`
-	BlockID       string `json:"blockID" api:"optional,nullable,ignoretype"`
-	ViewID        string `json:"viewID" api:"optional,nullable,ignoretype"`
-	CarrierViewID string `json:"carrierViewID" api:"optional,nullable,ignoretype"`
+	// 仅限制本次快照中的日历渲染范围，语义见 AVCalendarRange；不修改快照及共享视图。
+	CalendarRange *AVCalendarRange `json:"calendarRange" api:"optional,nullable"`
+	Snapshot      string           `json:"snapshot"`
+	ID            string           `json:"id"`
+	BlockID       string           `json:"blockID" api:"optional,nullable,ignoretype"`
+	ViewID        string           `json:"viewID" api:"optional,nullable,ignoretype"`
+	CarrierViewID string           `json:"carrierViewID" api:"optional,nullable,ignoretype"`
 }
 
 type RenderHistoryAttributeViewRequest struct {
+	// 仅限制本次历史版本中的日历渲染范围，语义见 AVCalendarRange；不修改历史及共享视图。
+	CalendarRange *AVCalendarRange          `json:"calendarRange" api:"optional,nullable"`
 	ID            string                    `json:"id"`
 	Created       string                    `json:"created"`
 	BlockID       string                    `json:"blockID" api:"optional,nullable"`
@@ -259,6 +275,9 @@ type RenderHistoryAttributeViewRequest struct {
 }
 
 type RenderAttributeViewRequest struct {
+	// 仅限制本次日历渲染范围，语义见 AVCalendarRange；无效区间返回错误，不修改已存数据。
+	// 发布读取保留权限过滤；日期范围和定位参数不扩大条目访问权限。
+	CalendarRange    *AVCalendarRange          `json:"calendarRange" api:"optional,nullable"`
 	ID               string                    `json:"id"`
 	BlockID          string                    `json:"blockID" api:"optional,nullable"`
 	ViewID           string                    `json:"viewID" api:"optional,nullable"`
@@ -271,6 +290,19 @@ type RenderAttributeViewRequest struct {
 	IgnoreRows       bool                      `json:"ignoreRows" api:"optional,nullable"`
 	TargetItemID     string                    `json:"targetItemID" api:"optional,nullable"`
 	TargetGroupID    string                    `json:"targetGroupID" api:"optional,nullable"`
+}
+
+// AVCalendarUndatedRequest 只读取普通日期字段为空的条目，不修改视图或数据库。
+// query 沿用当前视图搜索，search 仅匹配待安排条目的标题；页码从 1 开始，页大小默认 50，最大 100。
+// 端点仅供可编辑用户使用，并按 blockID 保持加密笔记本读取租约。
+type AVCalendarUndatedRequest struct {
+	ID       string   `json:"id"`
+	BlockID  string   `json:"blockID" api:"optional,nullable"`
+	ViewID   string   `json:"viewID"`
+	Query    string   `json:"query" api:"optional,nullable"`
+	Search   string   `json:"search" api:"optional,nullable"`
+	Page     *float64 `json:"page" api:"optional,nullable"`
+	PageSize *float64 `json:"pageSize" api:"optional,nullable"`
 }
 
 type GetCurrentAttrViewImagesRequest struct {

@@ -1,4 +1,5 @@
 import {revealTabsForTarget} from "../render/tabsRender";
+import {getTextWithLegacyInlineBoundary} from "./inlineElementBoundary";
 import {isHiddenTabContent} from "../render/tabsVisibility";
 import {
     getContenteditableElement,
@@ -29,6 +30,7 @@ import {
     stripSemanticMarkersFromRangeText
 } from "./inlineElementMarker";
 import {getSelectAllBlockAction, setBlockSelectionModeElement} from "../wysiwyg/blockSelection";
+import {restoreListMindmapFocus} from "../render/listMindmap/render";
 
 const selectIsEditor = (editor: Element, range?: Range) => {
     if (!range) {
@@ -64,7 +66,10 @@ export const fixTableRange = (range: Range) => {
     }
 };
 
-export const selectAll = (protyle: IProtyle, nodeElement: Element, range: Range): boolean => {
+export const selectAll = (protyle: IProtyle, nodeElement: Element, range: Range, allowBlockSelection = true): boolean => {
+    if (!allowBlockSelection) {
+        hideElements(["select"], protyle);
+    }
     const blockSelectionAction = getSelectAllBlockAction(protyle.wysiwyg.element);
     if (blockSelectionAction !== "none") {
         range.collapse(true);
@@ -134,6 +139,10 @@ export const selectAll = (protyle: IProtyle, nodeElement: Element, range: Range)
                 return true;
             }
         }
+    }
+    if (!allowBlockSelection) {
+        // 没有块菜单的编辑器保留文字选区，供工具栏继续操作。
+        return !range.collapsed;
     }
     range.collapse(true);
     hideElements(["select", "toolbar"], protyle);
@@ -653,6 +662,15 @@ Record<string, string> | undefined => {
         undoFocusEnd: end.toString(),
         undoFocusIgnoreZWSP: ignoreZWSP.toString(),
     };
+    if (startBlockElement === endBlockElement && startBlockElement.getAttribute("data-type") === "NodeTable") {
+        const cell = hasClosestByTag(range.startContainer, "TH") || hasClosestByTag(range.startContainer, "TD");
+        if (cell && cell.contains(range.endContainer)) {
+            context.undoFocusTableCell = Array.from(startBlockElement.querySelectorAll("th, td")).indexOf(cell).toString();
+            const offset = getSelectionOffset(cell, undefined, range, ignoreZWSP);
+            context.undoFocusStart = offset.start.toString();
+            context.undoFocusEnd = offset.end.toString();
+        }
+    }
     if (startEditableElement.classList.contains("callout-title") &&
         endEditableElement.classList.contains("callout-title")) {
         context.undoFocusCalloutTitle = "true";
@@ -701,6 +719,9 @@ export const restoreFocusContext = (protyle: IProtyle, context: Pick<IOperation[
         (!startEmbed || startEmbed.getAttribute("data-node-id") !== context.undoFocusEmbedId))) {
         return false;
     }
+    if (startBlockElement === endBlockElement && restoreListMindmapFocus(protyle.wysiwyg.element, startBlockElement)) {
+        return true;
+    }
     if (context.undoFocusTableCell !== undefined && startBlockElement.getAttribute("data-type") === "NodeTable") {
         const index = Number(context.undoFocusTableCell);
         const cell = Number.isInteger(index) && index >= 0 ?
@@ -708,22 +729,33 @@ export const restoreFocusContext = (protyle: IProtyle, context: Pick<IOperation[
         if (!cell || cell.classList.contains("fn__none")) {
             return false;
         }
+        const cellRange = context.undoFocusTableSelection === undefined ?
+            focusByOffset(cell, context.undoFocusCollapseToEnd === "true" ? end : start, end, false,
+                context.undoFocusIgnoreZWSP === "true") : undefined;
+        if (cellRange && cell.getAttribute("contenteditable") !== "false") {
+            // 按单元格定位，避免空单元格与前一单元格末尾的文本偏移相同。
+            focusByRange(cellRange);
+            return true;
+        }
         try {
-            const saved = JSON.parse(context.undoFocusTableSelection);
-            if (![saved.startIndex, saved.endIndex, saved.start, saved.end].every(value =>
-                Number.isInteger(value) && value >= 0) || typeof saved.backward !== "boolean") {
+            const saved = context.undoFocusTableSelection === undefined ? undefined : JSON.parse(context.undoFocusTableSelection);
+            if (context.undoFocusTableSelection !== undefined && (!saved ||
+                ![saved.startIndex, saved.endIndex, saved.start, saved.end].every(value =>
+                    Number.isInteger(value) && value >= 0) || typeof saved.backward !== "boolean")) {
                 return false;
             }
             // 单元格内部块没有持久 ID，使用单元格序号和片段内选区恢复编辑位置。
-            const range = document.createRange();
-            range.selectNodeContents(cell);
-            range.collapse(true);
+            const range = cellRange || document.createRange();
+            if (!cellRange) {
+                range.selectNodeContents(cell);
+                range.collapse(true);
+            }
             cell.tabIndex = -1;
             cell.focus({preventScroll: true});
             focusByRange(range);
-            void import("../render/tableCellRichEditor").then(module => {
+            void import("../render/tableCellRichEditor").then(async module => {
                 if (cell.isConnected && cell.contains(getSelection().focusNode)) {
-                    module.openTableCellRichEditor(protyle, cell, undefined, undefined, saved);
+                    await module.openTableCellRichEditor(protyle, cell, undefined, undefined, saved);
                     if (getSelection().rangeCount) {
                         protyle.toolbar.range = getSelection().getRangeAt(0);
                     }
@@ -882,7 +914,7 @@ export const setFirstNodeRange = (editElement: Element, range: Range) => {
 };
 
 const getDOMOffset = (textNode: Text, offset: number, skipZWSP: boolean) => {
-    const text = textNode.data;
+    const text = getTextWithLegacyInlineBoundary(textNode);
     const semanticPrefixLength = getSemanticMarkerPrefixLengthForNode(textNode);
     let domOffset = 0;
     let textOffset = 0;

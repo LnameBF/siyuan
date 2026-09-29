@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -163,6 +164,10 @@ func (box *Box) docIAL(p string) (ret map[string]string) {
 	filePath := filepath.Join(util.DataDir, box.ID, p)
 	ret = filesys.DocIAL(filePath)
 	if 1 > len(ret) {
+		// 目录枚举后文档可能已被删除，不将不存在的文件视为损坏。
+		if _, statErr := os.Stat(filePath); errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
 		// 加密笔记本的 .sy 解密失败（DEK 未缓存或 box 未解锁）时不应视为损坏，
 		// 否则文件会被 moveCorruptedData 移走导致数据丢失。
 		// 使用解析后的文件路径反查实际 boxID（可能因 symlink 或路径穿越指向加密 box）
@@ -183,6 +188,10 @@ func (box *Box) moveCorruptedData(filePath string) {
 	base := filepath.Base(filePath)
 	to := filepath.Join(util.WorkspaceDir, "corrupted", time.Now().Format("2006-01-02-150405"), box.ID, base)
 	if copyErr := filelock.Copy(filePath, to); nil != copyErr {
+		// 属性读取与备份之间发生删除时，无需再备份源文件。
+		if _, statErr := os.Stat(filePath); errors.Is(copyErr, os.ErrNotExist) && errors.Is(statErr, os.ErrNotExist) {
+			return
+		}
 		logging.LogErrorf("copy corrupted data file [%s] failed: %s", filePath, copyErr)
 		return
 	}
@@ -760,7 +769,7 @@ func GetDocInBox(startID, endID, id string, index int, query string, queryTypes,
 		parentID = node.Parent.ID
 		parent2ID = parentID
 		tmp := node
-		if ast.NodeListItem == node.Type {
+		if ast.NodeListItem == node.Type || ast.NodeMindmapItem == node.Type {
 			// 列表项聚焦返回和面包屑保持一致 https://github.com/siyuan-note/siyuan/issues/4914
 			tmp = node.Parent
 		}
@@ -1695,6 +1704,10 @@ func orderMoveDocPaths(fromPaths []string, pathsBoxes map[string]*Box) (ret []st
 }
 
 func MoveDocs(fromPaths []string, toBoxID, toPath string, callback any) (err error) {
+	return moveDocs(fromPaths, toBoxID, toPath, callback, true)
+}
+
+func moveDocs(fromPaths []string, toBoxID, toPath string, callback any, placeByConf bool) (err error) {
 	toBox := Conf.Box(toBoxID)
 	if nil == toBox {
 		err = errors.New(Conf.Language(0))
@@ -1774,6 +1787,20 @@ func MoveDocs(fromPaths []string, toBoxID, toPath string, callback any) (err err
 	movedDocs := make([]moveDocResult, 0, len(fromPaths))
 	defer func() {
 		if 0 < len(movedDocs) {
+			// 部分移动失败时也保存已完成文档的整组顺序，再通知前端刷新。
+			if placeByConf {
+				ids := make([]string, 0, len(movedDocs))
+				for _, moved := range movedDocs {
+					ids = append(ids, util.GetTreeID(moved.NewPath))
+				}
+				position := "after"
+				if Conf.FileTree.CreateDocAtTop != nil && *Conf.FileTree.CreateDocAtTop {
+					position = "before"
+				}
+				if sortErr := toBox.placeDocsInSiblingOrder(strings.TrimSuffix(toPath, ".sy"), ids, "", position); sortErr != nil {
+					err = errors.Join(err, sortErr)
+				}
+			}
 			evt := util.NewCmdResult("moveDocs", 0, util.PushModeBroadcast)
 			evt.Data = map[string]any{"moves": movedDocs}
 			evt.Callback = callback
@@ -3081,6 +3108,10 @@ func (box *Box) addMinSort(parentPath, id string) {
 }
 
 func (box *Box) placeDocInSiblingOrder(parentPath, id, targetID, position string) error {
+	return box.placeDocsInSiblingOrder(parentPath, []string{id}, targetID, position)
+}
+
+func (box *Box) placeDocsInSiblingOrder(parentPath string, ids []string, targetID, position string) error {
 	fileTreeSortLock.Lock()
 	confDir := filepath.Join(util.DataDir, box.ID, ".siyuan")
 	if err := os.MkdirAll(confDir, 0755); nil != err {
@@ -3098,9 +3129,13 @@ func (box *Box) placeDocInSiblingOrder(parentPath, id, targetID, position string
 		fileTreeSortLock.Unlock()
 		return err
 	}
-	orderedIDs := make([]string, 0, len(currentIDs)+1)
+	orderedIDs := make([]string, 0, len(currentIDs)+len(ids))
+	movedIDs := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		movedIDs[id] = true
+	}
 	for _, currentID := range currentIDs {
-		if currentID != id {
+		if !movedIDs[currentID] {
 			orderedIDs = append(orderedIDs, currentID)
 		}
 	}
@@ -3124,9 +3159,7 @@ func (box *Box) placeDocInSiblingOrder(parentPath, id, targetID, position string
 			return fmt.Errorf("sort target document [%s] not found", targetID)
 		}
 	}
-	orderedIDs = append(orderedIDs, "")
-	copy(orderedIDs[insertIndex+1:], orderedIDs[insertIndex:])
-	orderedIDs[insertIndex] = id
+	orderedIDs = slices.Insert(orderedIDs, insertIndex, ids...)
 	sortIDs := make(map[string]int, len(orderedIDs))
 	for i, orderedID := range orderedIDs {
 		sortIDs[orderedID] = i + 1

@@ -1,4 +1,6 @@
 import {destroyTabsRender} from "../render/tabsRender";
+import {destroyListMindmaps} from "../render/listMindmap";
+import {cancelLegacyMindmapMigration} from "../render/listMindmap/migrate";
 import {hideElements} from "../ui/hideElements";
 import {isSupportCSSHL} from "../render/searchMarkRender";
 import {destroyAIEditor} from "../../ai/editor";
@@ -9,12 +11,17 @@ import {unregisterCustomBlockRoot} from "../../plugin/customBlockRender";
 import {destroyTrackedRanges} from "./trackedRange";
 import {areProtylePluginExtensionsEnabled} from "../runtimeCapabilities";
 import {invalidateFocusFoldRequests} from "./focusFold";
+import {unregisterViewFoldContext} from "./viewFold";
+import {destroyAutoDirection} from "../render/autoDirection";
 
 export const destroy = (protyle: IProtyle) => {
     if (!protyle) {
         return;
     }
+    destroyListMindmaps(protyle);
+    cancelLegacyMindmapMigration(protyle);
     invalidateFocusFoldRequests(protyle);
+    unregisterViewFoldContext(protyle);
     destroyTrackedRanges(protyle);
     cancelAssetUploads(protyle);
     unmountBreadcrumbButtons(protyle);
@@ -33,6 +40,7 @@ export const destroy = (protyle: IProtyle) => {
     protyle.element.classList.remove("protyle");
     protyle.element.removeAttribute("style");
     if (protyle.wysiwyg) {
+        destroyAutoDirection(protyle.wysiwyg.element);
         unregisterCustomBlockRoot(protyle.wysiwyg.element);
         destroyTabsRender(protyle.wysiwyg.element);
         protyle.wysiwyg.destroy();

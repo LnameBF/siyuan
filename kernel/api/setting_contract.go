@@ -35,6 +35,7 @@ func settingAIPayload(value *conf.AI) *apicontract.SettingAI {
 	result.MCP = settingMCPPayload(value.MCP)
 	result.Embedding = settingEmbeddingPayload(value.Embedding)
 	result.Rerank = settingRerankPayload(value.Rerank)
+	result.Decision = settingDecisionPayload(value.Decision)
 	result.Agent = settingAgentPayload(value.Agent)
 	result.Editing = settingEditingPayload(value.Editing)
 	result.ImageGeneration = settingImageGenerationPayload(value.ImageGeneration)
@@ -122,6 +123,14 @@ func settingRerankPayload(value *conf.Rerank) *apicontract.SettingRerank {
 	result.Timeout = value.Timeout
 	result.CandidateCount = value.CandidateCount
 	return result
+}
+
+func settingDecisionPayload(value *conf.Decision) *apicontract.SettingDecision {
+	if value == nil {
+		return nil
+	}
+	return &apicontract.SettingDecision{Enabled: value.Enabled, Endpoint: value.Endpoint,
+		APIKey: value.APIKey, Name: value.Name, Timeout: value.Timeout}
 }
 
 func settingAgentPayload(value *conf.Agent) *apicontract.SettingAgent {
@@ -365,6 +374,7 @@ func settingEditorPayload(value *conf.Editor) *apicontract.SettingEditor {
 	result.DynamicLoadBlocks = value.DynamicLoadBlocks
 	result.Justify = value.Justify
 	result.RTL = value.RTL
+	result.AutoDirection = value.AutoDirection
 	result.Spellcheck = value.Spellcheck
 	result.SpellcheckLanguages = value.SpellcheckLanguages
 	result.HashTagSearch = value.HashTagSearch
@@ -376,6 +386,8 @@ func settingEditorPayload(value *conf.Editor) *apicontract.SettingEditor {
 	result.BacklinkHideReference = value.BacklinkHideReference
 	result.BacklinkShowBottom = value.BacklinkShowBottom
 	result.BacklinkSort = value.BacklinkSort
+	result.BacklinkGlobalSort = value.BacklinkGlobalSort
+	result.BacklinkBlockSort = value.BacklinkBlockSort
 	result.BackmentionSort = value.BackmentionSort
 	result.HeadingNumber = value.HeadingNumber
 	result.HeadingNumberFormat = value.HeadingNumberFormat
@@ -497,6 +509,8 @@ func settingSearchPayload(value *conf.Search) *apicontract.SettingSearch {
 		return nil
 	}
 	result := &apicontract.SettingSearch{}
+	result.Mindmap = value.Mindmap
+	result.MindmapItem = value.MindmapItem
 	result.Document = value.Document
 	result.Heading = value.Heading
 	result.List = value.List

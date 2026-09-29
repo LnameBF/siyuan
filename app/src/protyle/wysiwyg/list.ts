@@ -43,7 +43,7 @@ const getLastChildBlock = (element: Element) => {
 const unfoldElements = (protyle: IProtyle, elements: Element[]) => {
     elements.forEach(item => {
         if (item.getAttribute("fold") === "1") {
-            setFold(protyle, item, true, false, false, false, false);
+            setFold(protyle, item, true, false, false, false);
         }
     });
 };
@@ -134,7 +134,7 @@ export const openOrderedListStartDialog = (protyle: IProtyle, listElement: HTMLE
 
 export const setTaskListItemMarker = (protyle: IProtyle, taskItemElement: Element, marker: string): void => {
     if (!taskItemElement.isConnected || protyle.disabled || protyle.options.action.includes(Constants.CB_GET_HISTORY) ||
-        taskItemElement.getAttribute("data-type") !== "NodeListItem" ||
+        !["NodeListItem", "NodeMindmapItem"].includes(taskItemElement.getAttribute("data-type")) ||
         taskItemElement.getAttribute("data-subtype") !== "t" || !isTaskListMarker(marker)) {
         return;
     }
@@ -646,7 +646,7 @@ export const insertEmptyChildList = (protyle: IProtyle, previousElement: HTMLEle
         if (item.getAttribute("fold") !== "1") {
             return;
         }
-        const foldData = setFold(protyle, item, true, false, false, true);
+        const foldData = setFold(protyle, item, true, false, true);
         if (foldData?.doOperations?.length > 0) {
             doOperations.push(...foldData.doOperations);
             undoOperations.push(...foldData.undoOperations);
@@ -906,7 +906,7 @@ export const listIndent = async (protyle: IProtyle, liItemElements: Element[], r
                     });
                 });
             }
-            const foldOperations = setFold(protyle, foldElement, true, false, false, true);
+            const foldOperations = setFold(protyle, foldElement, true, false, true);
             doOperations.push(...foldOperations.doOperations);
             undoOperations.push(...foldOperations.undoOperations);
             if (focusedParentListElement) {

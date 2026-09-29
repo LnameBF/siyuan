@@ -13,12 +13,19 @@
 
 .b3-typography,
 .protyle-wysiwyg,
-.table__cell-rich {
+.table__cell-rich,
+.mindmap-view__content {
   font-variant-ligatures: no-common-ligatures;
   display: flex;
   flex-direction: column;
   font-size: var(--b3-font-size-editor);
   font-family: var(--b3-font-family-protyle);
+
+  &.table__cell-rich,
+  &.mindmap-view__content {
+    // 富文本预览沿用所在单元格或脑图节点的字号。
+    font-size: inherit;
+  }
 
   img {
     max-width: 100%;
@@ -30,6 +37,7 @@
   & > p,
   blockquote > p,
   [data-node-id],
+  .mindmap-view__preview-block,
   [data-table-cell-node] {
     line-height: 1.625;
     padding: 4px;
@@ -535,8 +543,7 @@
     position: relative;
   }
 
-  [data-subtype="echarts"],
-  [data-subtype="mindmap"] {
+  [data-subtype="echarts"] {
     z-index: 1;
     height: 420px;
 
@@ -641,6 +648,7 @@
 
   [data-subtype="plantuml"] img {
     border-radius: var(--b3-border-radius);
+    touch-action: manipulation;
   }
 
   .abcjs-container svg,
@@ -898,8 +906,7 @@
     position: relative;
 
     &--done:not([data-task="/"]) > div[data-node-id].p {
-      color: var(--b3-theme-on-surface-light);
-      text-decoration: line-through;
+      @include task.completed-text;
     }
 
     input {

@@ -18,6 +18,20 @@ import {getHostCapabilities} from "../../util/hostCapabilities";
 import {getLastExportPath, setLastExportPath} from "./path";
 import type {APICallbackResponse, APIPOSTRoutes} from "../../types/api";
 
+const getExportLanguages = () => {
+    const keys = new Set([
+        "copy", "mindmap", "fontSize", "bold", "italic", "colorFont", "color", "undo", "redo", "fold", "collapse", "expand",
+        "fullscreen", "exitFullscreen", "zoomIn", "zoomOut", "delete", "close", "connect", "text",
+        "task", "taskStatusTodo", "taskStatusInProgress", "taskStatusDone", "taskStatusCanceled", "customTaskStatus",
+        "expandLevel", "expandAll", "foldAll",
+    ]);
+    const languages = Object.fromEntries(Object.entries(window.siyuan.languages)
+        .filter(([key]) => keys.has(key) || key.startsWith("listMindmap")));
+    // 转义脚本边界和行分隔符，保留各语言文案中的引号与换行。
+    return JSON.stringify(languages).replace(/</g, "\\u003c")
+        .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+};
+
 const getPluginStyle = async () => {
     const response = await fetchSyncPost("/api/petal/loadPetals", {frontend: getFrontend()});
     let css = "";
@@ -313,6 +327,15 @@ const renderPDF = async (id: string) => {
             max-width: 100%;
         }
 
+        #preview .mindmap-view__toolbar {
+            display: none !important;
+        }
+
+        #preview .mindmap-view {
+            height: var(--mindmap-view-print-height, 420px);
+            min-height: 0;
+        }
+
         #preview a.pdf-embedded-asset {
             position: relative;
             padding-right: 1em !important;
@@ -336,7 +359,7 @@ const renderPDF = async (id: string) => {
     </style>
     ${getSnippetCSS()}
 </head>
-<body style="-webkit-print-color-adjust: exact;">
+<body data-export-pdf="true" style="-webkit-print-color-adjust: exact;">
 <div id="action">
     <div style="flex: 1;overflow-y:auto;overflow-x:hidden">
         <div class="b3-label">
@@ -490,7 +513,7 @@ const renderPDF = async (id: string) => {
       <div class="fn__flex-1"></div>
       <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
       <div class="fn__space"></div>
-      <button class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
+      <button disabled class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
     </div>
 </div>
 <div id="previewContainer">
@@ -633,13 +656,30 @@ ${getIconScript(servePath)}
             }
         })
     }
-    const renderPreview = (data) => {
+    let previewReady = Promise.resolve();
+    let previewRevision = 0;
+    const renderPreview = async (data) => {
         previewElement.innerHTML = '<div style="padding:8px 0 0 0" class="protyle-wysiwyg${window.siyuan.config.editor.displayBookmarkIcon ? " protyle-wysiwyg--attr" : ""}">' + data.content + '</div>';
         const wysElement = previewElement.querySelector(".protyle-wysiwyg");
         wysElement.setAttribute("data-doc-type", data.type || "NodeDocument");
         Object.keys(data.attrs).forEach(key => {
             wysElement.setAttribute(key, data.attrs[key]);
         })
+        Protyle.setAutoDirection(previewElement, ${!!window.siyuan.config.editor.autoDirection});
+        await Protyle.renderExportJSEmbeds(wysElement, {
+            disabled: ${window.siyuan.config.system.safeMode || getHostCapabilities().remoteKernel},
+            disabledTip: decodeURIComponent(${JSON.stringify(encodeURIComponent(window.siyuan.languages.safeModeJSTip))}),
+            rootID: "${id}",
+            headingMode: ${window.siyuan.config.editor.headingEmbedMode},
+        }, async (url, data) => {
+            const response = await fetch("${servePathWithoutTrailingSlash}" + url, {
+                method: "POST", body: JSON.stringify(data),
+            });
+            if (!response.ok) {
+                throw new Error(response.statusText);
+            }
+            return response.json();
+        });
         // https://github.com/siyuan-note/siyuan/issues/13669
         wysElement.querySelectorAll('[data-node-id]').forEach((item) => {
             if (item.querySelector(".img")) {
@@ -657,6 +697,7 @@ ${getIconScript(servePath)}
     }
     fetchPost("/api/export/exportPreviewHTML", {
         id: "${id}",
+        keepJSEmbed: true,
         keepFold: ${localData.keepFold},
         addTitle: ${window.siyuan.config.export.addTitle},
         customTitle: "",
@@ -683,7 +724,7 @@ ${getIconScript(servePath)}
               katexMacros: decodeURI(\`${encodeURI(window.siyuan.config.editor.katexMacros)}\`),
             }
           },
-          languages: {copy:"${window.siyuan.languages.copy}"}
+          languages: ${getExportLanguages()}
         };
         previewElement.addEventListener("click", (event) => {
             let target = event.target;
@@ -755,9 +796,12 @@ ${getIconScript(servePath)}
         const removeAssetsElement = actionElement.querySelector("#removeAssets");
         const  watermarkElement = actionElement.querySelector('#watermark');
         const refreshPreview = () => {
+            const revision = ++previewRevision;
+            actionElement.querySelector('.b3-button--text').disabled = true;
             previewElement.innerHTML = '<div class="fn__loading" style="left:0;height: 100vh"><img width="48px" src="${servePath}stage/loading-pure.svg"></div>'
             fetchPost("/api/export/exportPreviewHTML", {
                 id: "${id}",
+                keepJSEmbed: true,
                 keepFold: keepFoldElement.checked,
                 addTitle: addTitleElement.checked,
                 customTitle: customTitleElement.value,
@@ -765,13 +809,22 @@ ${getIconScript(servePath)}
                 mergeDocHeadingMode: mergeDocHeadingModeElement.value,
                 mergeContentHeadingMode: mergeContentHeadingModeElement.value,
             }, response2 => {
+                if (revision !== previewRevision) {
+                    return;
+                }
                 if (response2.code !== 0) {
                     alert(response2.msg)
                     return;
                 }
                 setPadding();
-                renderPreview(response2.data);
-                reserveEmbeddedAssetSpace(removeAssetsElement.checked);
+                previewReady = renderPreview(response2.data).then(() => {
+                    if (revision !== previewRevision) {
+                        return;
+                    }
+                    reserveEmbeddedAssetSpace(removeAssetsElement.checked);
+                    fixBlockWidth();
+                    actionElement.querySelector('.b3-button--text').disabled = false;
+                });
             })
         };
 
@@ -880,11 +933,13 @@ ${getIconScript(servePath)}
             });
         }));
         actionElement.querySelector('.b3-button--text').addEventListener('click', async () => {
+            await previewReady;
             const {ipcRenderer}  = require("electron");
             const defaultPath = decodeURIComponent(${JSON.stringify(encodeURIComponent(defaultExportPath))});
             const dialogOptions = {
                 cmd: "showOpenDialog",
                 title: "${window.siyuan.languages.export} PDF",
+                buttonLabel: ${JSON.stringify(window.siyuan.languages.save)},
                 properties: ["createDirectory", "openDirectory"],
             };
             if (defaultPath) {
@@ -945,8 +1000,14 @@ ${getIconScript(servePath)}
             ipcRenderer.send("${Constants.SIYUAN_EXPORT_PDF}", exportConfig);
         });
         setPadding();
-        renderPreview(response.data);
-        reserveEmbeddedAssetSpace(removeAssetsElement.checked);
+        previewReady = renderPreview(response.data).then(() => {
+            if (previewRevision !== 0) {
+                return;
+            }
+            reserveEmbeddedAssetSpace(removeAssetsElement.checked);
+            fixBlockWidth();
+            actionElement.querySelector('.b3-button--text').disabled = false;
+        });
         window.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 const {ipcRenderer}  = require("electron");
@@ -1107,10 +1168,11 @@ ${getIconScript(servePath)}
           katexMacros: decodeURI(\`${encodeURI(window.siyuan.config.editor.katexMacros)}\`),
         }
       },
-      languages: {copy:"${window.siyuan.languages.copy}"}
+      languages: ${getExportLanguages()}
     };
     const previewElement = document.getElementById('preview');
     Protyle.highlightRender(previewElement, "stage/protyle");
+    Protyle.setAutoDirection(previewElement, ${!!window.siyuan.config.editor.autoDirection});
     Protyle.mathRender(previewElement, "stage/protyle", ${exportOption.type === "pdf"});
     Protyle.mermaidRender(previewElement, "stage/protyle");
     Protyle.flowchartRender(previewElement, "stage/protyle");

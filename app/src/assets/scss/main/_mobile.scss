@@ -10,7 +10,8 @@ body {
   --mobile-bottom-bar-gap: 8px;
   --mobile-status-height: 24px;
   --mobile-bottom-bar-safe-area: env(safe-area-inset-bottom);
-  --mobile-bottom-bar-bottom: calc(var(--mobile-status-height) + var(--mobile-bottom-bar-gap) + var(--mobile-bottom-bar-safe-area));
+  // 底部安全区与状态提示预留空间取较大值，避免导航栏被重复抬高。
+  --mobile-bottom-bar-bottom: calc(max(var(--mobile-status-height), var(--mobile-bottom-bar-safe-area)) + var(--mobile-bottom-bar-gap));
   --mobile-bottom-bar-offset: calc(var(--mobile-bottom-bar-height) + var(--mobile-bottom-bar-bottom));
 }
 
@@ -161,6 +162,12 @@ body.mobile-keyboard--open {
   line-height: 24px;
   height: 24px;
   font-size: 16px;
+
+  &.counter--compact {
+    font-size: 12px;
+    height: 22px;
+    line-height: 22px;
+  }
 }
 
 .toolbar {
@@ -422,9 +429,13 @@ body.mobile-keyboard--open {
   box-sizing: border-box;
   height: var(--mobile-topbar-height);
   min-height: var(--mobile-topbar-height);
-  padding: 0 max(4px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  padding: 0 max(4px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
   transform: translate3d(0, var(--mobile-bar-translate-y, 0), 0);
   will-change: transform;
+
+  .toolbar__title {
+    margin-left: 8px;
+  }
 }
 
 .mobile-bottom-bar {
@@ -600,6 +611,8 @@ body.mobile-topbar--merged {
   position: absolute;
   inset: var(--mobile-top-safe-area) 0 0;
   box-sizing: border-box;
+  // 外壳不创建 iOS 滚动层叠上下文，使固定定位工具栏能覆盖标题栏。
+  -webkit-overflow-scrolling: auto;
   // 绝对定位的主编辑器需继承键盘占位，保持软键盘与工具栏菜单切换时的滚动视口高度。
   padding-bottom: inherit;
 
@@ -612,9 +625,8 @@ body.mobile-topbar--merged {
     z-index: 5;
     height: var(--mobile-breadcrumb-height);
     border-radius: 0;
-    opacity: var(--mobile-bar-opacity, 1);
     transform: translate3d(0, var(--mobile-bar-translate-y, 0), 0);
-    will-change: opacity, transform;
+    will-change: transform;
   }
 
   > .protyle-content {
@@ -638,6 +650,8 @@ body.mobile-topbar--merged {
 
   > .protyle-content,
   > .protyle-preview {
+    // 实际滚动区域保留触摸滚动及其后代的继承行为。
+    -webkit-overflow-scrolling: touch;
     margin-left: env(safe-area-inset-left);
     margin-right: env(safe-area-inset-right);
   }
@@ -1142,7 +1156,7 @@ body.mobile-topbar--merged {
             height: auto;
             margin: 0;
             min-height: 44px;
-            padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+            padding: max(8px, var(--mobile-top-safe-area)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
             position: sticky;
             top: 0;
             width: 100%;
@@ -1221,7 +1235,7 @@ body.mobile-topbar--merged {
     font-weight: normal;
     line-height: 20px;
     margin: 0;
-    padding: 8px;
+    padding: 8px 16px;
   }
 
   .config-items {
@@ -1231,6 +1245,21 @@ body.mobile-topbar--merged {
       margin: 0 16px;
       padding: 16px 0;
     }
+  }
+
+  #syncProviderConfig .b3-label--inner,
+  .config-account__payment-status,
+  .config-account__payment-remaining,
+  .config-cloud-space {
+    font-size: 14px;
+  }
+
+  .config-cloud-space .b3-list-item__meta {
+    font-size: inherit;
+  }
+
+  .config-cloud-space__title {
+    font-size: 15px;
   }
 
   .config-assets {
@@ -1262,6 +1291,12 @@ body.mobile-topbar--merged {
   z-index: 7;
   top: 0;
   transform: translateX(100vw);
+
+  > .toolbar {
+    flex-shrink: 0;
+    padding-left: max(5px, env(safe-area-inset-left));
+    padding-right: max(5px, env(safe-area-inset-right));
+  }
 
   .mobile-main-menu {
     &__search {
@@ -1324,6 +1359,23 @@ body.mobile-topbar--merged {
     flex: 1;
     overflow: auto;
     background-color: var(--b3-theme-surface);
+
+    > .protyle-hint {
+      position: static;
+      width: auto !important;
+      min-width: 0;
+      max-width: none;
+      max-height: none !important;
+      box-shadow: none;
+      border: 0;
+      padding: 0;
+      background-color: transparent;
+
+      .keyboard__slash-text {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+    }
   }
 
   &__split {
@@ -1426,6 +1478,12 @@ body.mobile-topbar--merged {
 
     &-text {
       margin-left: 6px;
+    }
+
+    &-description {
+      display: block;
+      color: var(--b3-theme-on-surface);
+      font-size: .75rem;
     }
   }
 
@@ -1649,13 +1707,13 @@ body.mobile-topbar--merged {
 
 .status {
   position: fixed;
-  bottom: calc(0px - var(--mobile-status-height) - var(--mobile-bottom-bar-safe-area));
-  height: calc(var(--mobile-status-height) + var(--mobile-bottom-bar-safe-area));
+  bottom: calc(0px - var(--mobile-status-height));
+  height: var(--mobile-status-height);
   line-height: 16px;
   transition: var(--b3-transition);
   font-size: 12px;
   color: var(--b3-theme-on-surface);
-  padding: 4px 4px calc(4px + var(--mobile-bottom-bar-safe-area));
+  padding: 4px;
   white-space: nowrap;
   width: 100%;
   box-sizing: border-box;
@@ -1719,6 +1777,8 @@ body.mobile-topbar--merged {
   }
 
   .mobile-bottom-sheet {
+    // 退出时保持可见，由位移动画将面板移出可视区域。
+    opacity: 1;
     max-height: min(60vh, 100%);
     border: 0;
     border-radius: var(--b3-border-radius-b) var(--b3-border-radius-b) 0 0;

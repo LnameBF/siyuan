@@ -9,7 +9,7 @@ import {moveToDown, moveToUp} from "../../protyle/wysiwyg/move";
 import {Constants} from "../../constants";
 import {focusBlock, focusByRange, getSelectionPosition} from "../../protyle/util/selection";
 import {getCurrentEditor as getDocumentEditor} from "../editor";
-import {getMobileToolbarProtyle, getMobileToolbarUndo} from "../../protyle/lite/mobileToolbar";
+import {getMobileToolbarPaddingElement, getMobileToolbarProtyle, getMobileToolbarUndo} from "../../protyle/lite/mobileToolbar";
 import {LocalUndo} from "../../protyle/undo";
 import {convertFontSize, fontEvent, getFontNodeElements, getFontSizeInfo} from "../../protyle/toolbar/Font";
 import {hideElements} from "../../protyle/ui/hideElements";
@@ -33,6 +33,7 @@ import {
     filterHiddenRecentInlineStyles,
     getBuiltinInlineStyleIDFromValue,
     getBuiltinInlineStylePreview,
+    getBuiltinInlineStyleApplication,
     getBuiltinInlineStylePropertyValue,
     getInlineStyleByID,
     getInlineStyleByValue,
@@ -61,6 +62,7 @@ import {
 } from "./touchSelection";
 import {getVisibleViewportBounds} from "./visibleViewport";
 import {createInlineMathSelection} from "./inlineMathSelection";
+import {isCommittedTextInput} from "../../protyle/wysiwyg/compositionInput";
 import {
     getTextWithoutSemanticMarkers,
     stripSemanticMarkersFromRangeText
@@ -80,11 +82,15 @@ import {applyMobileToolbarEntries} from "./toolbarEntries";
 import {getEntryOrder, isEntryVisible} from "../../config/entryVisibility/runtime";
 import {TOOLBAR_ENTRY_ROOT_PATH} from "../../protyle/toolbar/defaults";
 import {getKeyboardPanelHeight} from "./keyboardPanelHeight";
+import {restoreGutterBySelection} from "../../protyle/gutter/restore";
+import {mountLiteSlashMenu} from "./liteSlashMenu";
+import {getTableCellRichContext} from "../../protyle/util/tableCellRichContext";
+import {insertEmptyBlock} from "../../block/util";
+import {getIconByType} from "../../editor/getIcon";
 
 const getCurrentEditor = () => getMobileToolbarProtyle()?.getInstance() || getDocumentEditor();
-const getKeyboardPaddingElement = (protyle: IProtyle) =>
-    protyle.lite ? protyle.contentElement : protyle.element.parentElement;
 let toolbarProtyle: IProtyle;
+let unmountLiteSlashMenu: (() => void) | undefined;
 
 const applyKeyboardToolbarEntries = (element: HTMLElement, toolbar: Array<string | IMenuItem>) => {
     applyMobileToolbarEntries(element, toolbar, {
@@ -109,14 +115,7 @@ type TAndroidTableCellSelectAll = {
 };
 
 const ANDROID_TABLE_CELL_SELECT_ALL_TIMEOUT = 2000;
-const inlineMathSelection = createInlineMathSelection((editor, math) => {
-    const protyle = getCurrentEditor()?.protyle;
-    if (!protyle || protyle.disabled || protyle.toolbar.isMultiSelectMode() || protyle.wysiwyg.element !== editor) {
-        return;
-    }
-    protyle.toolbar.range = getSelection().getRangeAt(0).cloneRange();
-    protyle.toolbar.showRender(protyle, math);
-});
+const inlineMathSelection = createInlineMathSelection();
 
 let renderKeyboardToolbarFrame: number | undefined;
 let scrollSelectionIntoViewTimeout: number;
@@ -423,7 +422,7 @@ const updateKeyboardPanelHeight = () => {
     toolbarElement.style.height = panelHeight;
     const editor = getCurrentEditor();
     if (editor) {
-        getKeyboardPaddingElement(editor.protyle).style.paddingBottom = panelHeight;
+        getMobileToolbarPaddingElement(editor.protyle).style.paddingBottom = panelHeight;
     }
 };
 
@@ -471,7 +470,7 @@ export const renderTextMenu = (protyle: IProtyle, toolbarElement: Element) => {
 </button>`;
                 }
                 const preview = getBuiltinInlineStylePreview(key as TBuiltinInlineStyleID);
-                return `<button class="keyboard__slash-item" data-type="style1">
+                return `<button class="keyboard__slash-item" data-type="style1" data-builtin-style-id="${key}">
     <span class="keyboard__slash-icon" style="color:${preview.color};background-color:${preview.backgroundColor};">A</span>
     <span class="keyboard__slash-text">${getBuiltinStyleLabel(key as TBuiltinInlineStyleID)}</span>
 </button>`;
@@ -562,7 +561,7 @@ export const renderTextMenu = (protyle: IProtyle, toolbarElement: Element) => {
                             backgroundColor: lastFontStatus[1],
                             color: lastFontStatus[2],
                         };
-                        lastColorHTML += `<button class="keyboard__slash-item" data-type="${lastFontStatus[0]}">
+                        lastColorHTML += `<button class="keyboard__slash-item" data-builtin-style-id="${builtInStyle || ""}" data-type="${lastFontStatus[0]}">
     <span class="keyboard__slash-icon" style="background-color:${preview.backgroundColor};color:${preview.color}">A</span>
     <span class="keyboard__slash-text">${customLabel || (builtInStyle ? getBuiltinStyleLabel(builtInStyle) : window.siyuan.languages.color)}</span>
 </button>`;
@@ -693,19 +692,7 @@ const renderSlashMenu = (protyle: IProtyle, toolbarElement: Element) => {
     protyle.hint.lastIndex = -1;
     if (protyle.lite) {
         // 轻量编辑器沿用自己的插入候选，保留单元格内容限制和智能体技能入口。
-        const items = protyle.options.hint.extend.find(item => item.key === "/")?.hint?.("", protyle, "hint") || [];
-        protyle.hint.genHTML(items, protyle, true, "hint");
-        const utilElement = toolbarElement.querySelector(".keyboard__util");
-        utilElement.replaceChildren();
-        if (items.length > 0) {
-            Array.from(protyle.hint.element.children).forEach((element: HTMLElement, index) => {
-                element.classList.add("keyboard__slash-item");
-                element.setAttribute("data-focus", items[index]?.focus === false ? "false" : "true");
-                utilElement.appendChild(element);
-            });
-        }
-        protyle.hint.element.classList.add("fn__none");
-        protyle.hint.bindUploadEvent(protyle, utilElement as HTMLElement);
+        unmountLiteSlashMenu = mountLiteSlashMenu(protyle, toolbarElement.querySelector(".keyboard__util"));
         return;
     }
     let pluginHTML = "";
@@ -724,8 +711,10 @@ const renderSlashMenu = (protyle: IProtyle, toolbarElement: Element) => {
             return;
         }
         const style = getBuiltinStyleCSS(id);
+        const preview = getBuiltinInlineStylePreview(id);
         builtinStyleHTML += getSlashItem(`style${Constants.ZWSP}${style}`,
-            `<div style="${style}" class="keyboard__slash-icon">A</div>`, getBuiltinStyleLabel(id), "true");
+            `<div style="color:${preview.color};background-color:${preview.backgroundColor};" class="keyboard__slash-icon">A</div>`,
+            getBuiltinStyleLabel(id), "true");
     });
     const utilElement = toolbarElement.querySelector(".keyboard__util") as HTMLElement;
     utilElement.innerHTML = `<div class="keyboard__slash-title"></div>
@@ -763,6 +752,7 @@ const renderSlashMenu = (protyle: IProtyle, toolbarElement: Element) => {
     ${getSlashItem("- [ ] " + Lute.Caret, "iconCheck", window.siyuan.languages.check, "true")}
     ${getSlashItem("> " + Lute.Caret, "iconQuote", window.siyuan.languages.quote, "true")}
     ${getSlashItem(`::: tabs\n@tab\n\n${Lute.Caret}\n\n@tab\n\n:::\n`, "iconTabs", window.siyuan.languages.tabs, "true")}
+    ${getSlashItem(`- ${Lute.Caret}\n{: ${Constants.CUSTOM_SY_LIST_MINDMAP}="1"}`, "iconMindmap", window.siyuan.languages.mindmap, "true")}
     ${getSlashItem(`> [!NOTE]\n> ${Lute.Caret}`, '<span class="keyboard__slash-icon">✏️</span>', `${window.siyuan.languages.callout} - <span style="color: var(--b3-callout-note)">Note</span>`, "true")}
     ${getSlashItem(`> [!TIP]\n> ${Lute.Caret}`, '<span class="keyboard__slash-icon">💡</span>', `${window.siyuan.languages.callout} - <span style="color: var(--b3-callout-tip)">Tip</span>`, "true")}
     ${getSlashItem(`> [!IMPORTANT]\n> ${Lute.Caret}`, '<span class="keyboard__slash-icon">❗</span>', `${window.siyuan.languages.callout} - <span style="color: var(--b3-callout-important)">Important</span>`, "true")}
@@ -781,7 +771,6 @@ const renderSlashMenu = (protyle: IProtyle, toolbarElement: Element) => {
     ${getSlashItem("```flowchart\n```", "", "Flow Chart", "true")}
     ${getSlashItem("```graphviz\n```", "", "Graph", "true")}
     ${getSlashItem("```mermaid\n```", "", "Mermaid", "true")}
-    ${getSlashItem("```mindmap\n```", "", window.siyuan.languages.mindmap, "true")}
     ${getSlashItem("```plantuml\n```", "", "UML", "true")}
 </div>
 <div class="keyboard__slash-title"></div>
@@ -828,7 +817,28 @@ export const showKeyboardToolbarUtil = (oldScrollTop: number) => {
     }, 1000);   // 防止光标改变后斜杆菜单消失
 };
 
+const hideAndroidKeyboardForPanel = (protyle: IProtyle) => {
+    if (!window.JSAndroid?.hideKeyboard) {
+        return;
+    }
+    const blurEditor = () => {
+        const activeElement = document.activeElement as HTMLElement;
+        if (protyle.wysiwyg.element.contains(activeElement)) {
+            activeElement.blur();
+        }
+    };
+    // 键盘收起时移走编辑焦点，避免输入法立即重新弹出；选区由面板和原生回调保留。
+    window.addEventListener("siyuan-mobile-keyboard-hiding", blurEditor, {once: true});
+    window.JSAndroid.hideKeyboard();
+    window.setTimeout(() => {
+        window.removeEventListener("siyuan-mobile-keyboard-hiding", blurEditor);
+        blurEditor();
+    }, 100);
+};
+
 const resetKeyboardToolbarUtilButtons = () => {
+    unmountLiteSlashMenu?.();
+    unmountLiteSlashMenu = undefined;
     const toolbarElement = document.getElementById("keyboardToolbar");
     toolbarElement.querySelectorAll('[data-type="add"], [data-type="text"], [data-type="font-family"], [data-type="font-size"]')
         .forEach(item => item.classList.remove("protyle-toolbar__item--current"));
@@ -865,7 +875,7 @@ const hideKeyboardToolbarUtil = (restoreKeyboard = false) => {
     updateKeyboardToolbarPosition();
     const editor = getCurrentEditor();
     if (editor) {
-        getKeyboardPaddingElement(editor.protyle).style.paddingBottom = "48px";
+        getMobileToolbarPaddingElement(editor.protyle).style.paddingBottom = "48px";
     }
     resetKeyboardToolbarUtilButtons();
 };
@@ -936,7 +946,7 @@ const renderKeyboardToolbar = () => {
         if (!selection || selection.rangeCount === 0) {
             return;
         }
-        if (!showUtil) {
+        if (!showUtil && keyboardPanelTop === undefined) {
             hideKeyboardToolbarUtil();
         }
         showKeyboardToolbarElement();
@@ -954,6 +964,14 @@ const renderKeyboardToolbar = () => {
             dynamicElements[1].classList.add("fn__none");
             return;
         }
+
+        const blockButton = document.querySelector<HTMLElement>('#keyboardToolbar [data-type="block"]');
+        const blockType = nodeElement.getAttribute("data-type");
+        blockButton.querySelector("use").setAttribute("xlink:href",
+            `#${getIconByType(blockType, nodeElement.getAttribute("data-subtype")) || "iconParagraph"}`);
+        blockButton.setAttribute("aria-label", blockType === "NodeCodeBlock" ? window.siyuan.languages.code :
+            blockType === "NodeMathBlock" ? window.siyuan.languages.math :
+                blockType === "NodeParagraph" ? window.siyuan.languages.paragraph : window.siyuan.languages.contentBlock);
 
         const selectText = stripSemanticMarkersFromRangeText(range).split(Constants.ZWSP).join("");
         const startCellElement = hasClosestByTag(range.startContainer, "TD") ||
@@ -1063,7 +1081,7 @@ const showKeyboardToolbarElement = () => {
     if (pendingFocus && getCurrentEditor()?.protyle === pendingFocus.protyle && !pendingFocus.protyle.disabled) {
         restoreEditorFocusRange(pendingFocus.protyle.wysiwyg.element, pendingFocus.range);
     }
-    if (!showUtil) {
+    if (!showUtil && keyboardPanelTop === undefined) {
         hideKeyboardToolbarUtil();
     }
     const selection = getSelection();
@@ -1080,12 +1098,13 @@ const showKeyboardToolbarElement = () => {
         keyboardPanelClosing = false;
         hideKeyboardToolbarUtil();
         if (toolbarProtyle) {
-            getKeyboardPaddingElement(toolbarProtyle).style.paddingBottom = "";
+            getMobileToolbarPaddingElement(toolbarProtyle).style.paddingBottom = "";
         }
         toolbarProtyle = protyle;
         updateMobilePluginToolbar(protyle);
     }
-    toolbarElement.querySelector('[data-type="block"]').classList.toggle("fn__none", !protyle.gutter);
+    toolbarElement.querySelector('[data-type="block"]').classList.toggle("fn__none",
+        !protyle.gutter && !getTableCellRichContext(protyle));
     if (!toolbarElement.classList.contains("fn__none")) {
         return;
     }
@@ -1103,7 +1122,7 @@ const showKeyboardToolbarElement = () => {
     const editor = getCurrentEditor();
     if (editor) {
         if (editor.protyle.wysiwyg.element.contains(range.startContainer)) {
-            getKeyboardPaddingElement(editor.protyle).style.paddingBottom = "48px";
+            getMobileToolbarPaddingElement(editor.protyle).style.paddingBottom = "48px";
         }
         forEachPluginSubscriber("mobile-keyboard-show", eventBus => {
             eventBus.emit("mobile-keyboard-show");
@@ -1144,14 +1163,7 @@ const scrollKeyboardSelectionIntoView = () => {
         const contentElement = hasClosestByClassName(range.startContainer, "protyle-content", true);
         if (contentElement) {
             const renderGutter = () => {
-                const blockElement = hasClosestBlock(range.startContainer);
-                if (!editor?.protyle.gutter || !editor.protyle.options.render.gutter ||
-                    !blockElement || !editor.protyle.wysiwyg.element.contains(blockElement)) {
-                    return;
-                }
-                const targetElement = range.startContainer.nodeType === Node.ELEMENT_NODE ?
-                    range.startContainer as Element : range.startContainer.parentElement;
-                editor.protyle.gutter.render(editor.protyle, blockElement, targetElement);
+                restoreGutterBySelection(editor.protyle);
             };
             let cursorTop = getSelectionPosition(contentElement, range.cloneRange()).top;
             if (cursorTop < 0 && window.siyuan.mobile.touchRange) {
@@ -1210,7 +1222,8 @@ export const hideKeyboardToolbar = () => {
     }
     clearTimeout(scrollSelectionIntoViewTimeout);
     clearRenderGutterAfterScroll?.();
-    if (showUtil) {
+    // 键盘退场时保留已展开的移动端菜单，菜单由用户操作或编辑器切换关闭。
+    if (showUtil || keyboardPanelTop !== undefined) {
         return;
     }
     pendingKeyboardFocus = undefined;
@@ -1221,7 +1234,7 @@ export const hideKeyboardToolbar = () => {
     toolbarElement.style.height = "";
     const editor = getCurrentEditor();
     if (editor) {
-        getKeyboardPaddingElement(editor.protyle).style.paddingBottom = "";
+        getMobileToolbarPaddingElement(editor.protyle).style.paddingBottom = "";
         if (!toolbarHidden) {
             forEachPluginSubscriber("mobile-keyboard-hide", eventBus => {
                 eventBus.emit("mobile-keyboard-hide");
@@ -1255,11 +1268,15 @@ export const hideKeyboardToolbarByApp = (preserveSelection = false) => {
         return KeyboardHideResult.Cleanup;
     }
     hideElements(["util"], editor.protyle);
-    const range = selection?.rangeCount > 0 && !selection.isCollapsed ? selection.getRangeAt(0) : undefined;
-    const hasVisibleEditorSelection = !!range && hasVisibleSelectionText(stripSemanticMarkersFromRangeText(range)) &&
+    const range = selection?.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
+    const hasEditorRange = !!range &&
         editor.protyle.wysiwyg.element.contains(range.startContainer) &&
         editor.protyle.wysiwyg.element.contains(range.endContainer);
-    const result = getKeyboardHideResult(preserveSelection, tableCellSelectionRestored, hasVisibleEditorSelection);
+    const hasVisibleEditorSelection = hasEditorRange && !range.collapsed &&
+        hasVisibleSelectionText(stripSemanticMarkersFromRangeText(range));
+    // 菜单仍需使用当前选区，通知原生端保留 WebView 焦点和选区。
+    const result = getKeyboardHideResult(preserveSelection, tableCellSelectionRestored,
+        hasVisibleEditorSelection, keyboardPanelTop !== undefined && hasEditorRange);
     if (result === KeyboardHideResult.PreserveSelection || !hasVisibleEditorSelection) {
         return result;
     }
@@ -1289,9 +1306,10 @@ export const activeBlur = (force = false) => {
 };
 
 export const initKeyboardToolbar = () => {
+    window.addEventListener("siyuan-mobile-toolbar-focus", renderKeyboardToolbar);
     window.addEventListener("siyuan-mobile-toolbar-editor", (event: CustomEvent<IProtyle>) => {
         if (event.detail) {
-            getKeyboardPaddingElement(event.detail).style.paddingBottom = "";
+            getMobileToolbarPaddingElement(event.detail).style.paddingBottom = "";
             if (toolbarProtyle === event.detail) {
                 toolbarProtyle = undefined;
             }
@@ -1343,6 +1361,11 @@ export const initKeyboardToolbar = () => {
     document.addEventListener("compositionend", () => {
         composing = false;
     }, true);
+    document.addEventListener("input", (event: InputEvent) => {
+        if (isCommittedTextInput(event)) {
+            composing = false;
+        }
+    }, true);
     document.addEventListener("selectionchange", () => {
         inlineMathSelection.update(getMathEditor(), getSelection(), composing);
     }, true);
@@ -1364,6 +1387,9 @@ export const initKeyboardToolbar = () => {
         viewportHandler();
     }
     document.addEventListener("selectionchange", () => {
+        if (composing) {
+            return;
+        }
         rememberAndroidTableCellSelectAll();
         if (preserveAndroidBoundedSelection()) {
             return;
@@ -1522,7 +1548,8 @@ export const initKeyboardToolbar = () => {
         }
         const protyle = getCurrentEditor()?.protyle;
         const target = event.target as HTMLElement;
-        const slashBtnElement = hasClosestByClassName(event.target as HTMLElement, "keyboard__slash-item");
+        const liteSlashBtnElement = target.closest<HTMLElement>(".keyboard__util .protyle-hint .keyboard__slash-item[data-value]");
+        const slashBtnElement = liteSlashBtnElement || hasClosestByClassName(target, "keyboard__slash-item");
         if (slashBtnElement && slashBtnElement.dataset.action === "fontFamilyMenu") {
             const range = protyle.toolbar.range.cloneRange();
             const nodeElements = getFontNodeElements(protyle);
@@ -1572,6 +1599,14 @@ export const initKeyboardToolbar = () => {
             if (dataValue === Constants.ZWSP + 3) {
                 return;
             }
+            if (liteSlashBtnElement) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!dataValue) {
+                    return;
+                }
+                hideKeyboardToolbarUtil();
+            }
             protyle.hint.fill(dataValue, protyle, false);   // 点击后 range 会改变
             event.preventDefault();
             event.stopPropagation();
@@ -1583,8 +1618,17 @@ export const initKeyboardToolbar = () => {
                 if (isInHarmony() || isInAndroid()) {
                     setTimeout(() => focusByRange(protyle.toolbar.range), Constants.TIMEOUT_TRANSITION);
                 }
-            } else if (slashBtnElement.getAttribute("data-focus") === "true") {
-                focusByRange(protyle.toolbar.range);
+            } else if (slashBtnElement.getAttribute("data-focus") === "true" ||
+                liteSlashBtnElement && slashBtnElement.getAttribute("data-focus") !== "false") {
+                const selection = getSelection();
+                const editorRange = getEditorFocusRange(protyle.wysiwyg.element,
+                    selection?.rangeCount ? selection.getRangeAt(0) : undefined, protyle.toolbar.range);
+                if (editorRange && (document.activeElement === document.body ||
+                    protyle.wysiwyg.element.contains(document.activeElement))) {
+                    hideKeyboardToolbarUtil(true);
+                    restoreKeyboardToolbarRange(protyle, editorRange);
+                    showKeyboardToolbar();
+                }
             }
             return;
         }
@@ -1600,8 +1644,10 @@ export const initKeyboardToolbar = () => {
             const itemElement = buttonElement.firstElementChild as HTMLElement;
             const focusRange = !buttonElement.classList.contains("keyboard__slash-item");
             if (type === "style1") {
+                const builtinID = buttonElement.dataset.builtinStyleId as TBuiltinInlineStyleID;
                 fontEvent(protyle, nodeElements, type,
-                    encodeStyle1(itemElement.style.backgroundColor, itemElement.style.color), focusRange);
+                    builtinID ? getBuiltinInlineStyleApplication(builtinID).color :
+                        encodeStyle1(itemElement.style.backgroundColor, itemElement.style.color), focusRange);
             } else if (type === "fontSize") {
                 fontEvent(protyle, nodeElements, type, itemElement.textContent.trim(), focusRange);
             } else if (type === "backgroundColor") {
@@ -1758,7 +1804,7 @@ export const initKeyboardToolbar = () => {
                 }));
             }
             showKeyboardToolbarUtil(protyle.contentElement.scrollTop);
-            window.JSAndroid?.hideKeyboard();
+            hideAndroidKeyboardForPanel(protyle);
             return;
         } else if (type === "text") {
             if (buttonElement.classList.contains("protyle-toolbar__item--current")) {
@@ -1771,14 +1817,16 @@ export const initKeyboardToolbar = () => {
                 const oldScrollTop = protyle.contentElement.scrollTop;
                 renderTextMenu(protyle, toolbarElement);
                 showKeyboardToolbarUtil(oldScrollTop);
-                window.JSAndroid?.hideKeyboard();
-                setTimeout(() => {
-                    focusByRange(range);
-                    preventRender = true;
+                hideAndroidKeyboardForPanel(protyle);
+                if (!window.JSAndroid) {
                     setTimeout(() => {
-                        preventRender = false;
-                    }, 1000);
-                }, Constants.TIMEOUT_TRANSITION);
+                        focusByRange(range);
+                        preventRender = true;
+                        setTimeout(() => {
+                            preventRender = false;
+                        }, 1000);
+                    }, Constants.TIMEOUT_TRANSITION);
+                }
             }
             return;
         } else if (type === "moveup") {
@@ -1806,14 +1854,37 @@ export const initKeyboardToolbar = () => {
             renderSlashMenu(protyle, toolbarElement);
             showKeyboardToolbarUtil(oldScrollTop);
             (document.activeElement as HTMLElement)?.blur();
-            window.JSAndroid?.hideKeyboard();
+            hideAndroidKeyboardForPanel(protyle);
             return;
         } else if (type === "block") {
             event.preventDefault();
             protyle.toolbar.range = range;
             keyboardPanelClosing = false;
             hideKeyboardToolbarUtil();
-            protyle.gutter?.renderMenu(protyle, nodeElement);
+            if (!protyle.gutter && getTableCellRichContext(protyle)) {
+                const {MenuItem} = await import("../../menus/Menu");
+                if (!nodeElement.isConnected || protyle.disabled || !getTableCellRichContext(protyle)) {
+                    return;
+                }
+                window.siyuan.menus.menu.remove();
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "insertBefore",
+                    icon: "iconBefore",
+                    label: window.siyuan.languages.insertBefore,
+                    click: () => insertEmptyBlock(protyle, "beforebegin", nodeElement),
+                }).element);
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "insertAfter",
+                    icon: "iconAfter",
+                    label: window.siyuan.languages.insertAfter,
+                    click: () => insertEmptyBlock(protyle, "afterend", nodeElement),
+                }).element);
+                window.siyuan.menus.menu.fullscreen("all", restoreMenuKeyboard);
+                return;
+            }
+            // 多选时以已选块打开共享块菜单，使列表项转换作用于整个选区。
+            const selectedBlock = protyle.wysiwyg.element.querySelector<HTMLElement>(".protyle-wysiwyg--select");
+            protyle.gutter?.renderMenu(protyle, selectedBlock || nodeElement);
             window.siyuan.menus.menu.fullscreen("all", restoreMenuKeyboard);
             return;
         } else if (type === "outdent") {

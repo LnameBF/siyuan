@@ -441,7 +441,7 @@ func unmount0(boxID string) {
 		lockBoxWithPreparation(boxID, func() {
 			boxConf := box.GetConf()
 			boxConf.Closed = true
-			if err := box.SaveConf(boxConf); err != nil {
+			if err := box.SaveConfAndSync(boxConf); err != nil {
 				logging.LogErrorf("save box conf [%s] failed: %s", box.ID, err)
 			}
 			GenerateFileHistoryForBox(box)
@@ -451,7 +451,7 @@ func unmount0(boxID string) {
 
 	boxConf := box.GetConf()
 	boxConf.Closed = true
-	if err := box.SaveConf(boxConf); err != nil {
+	if err := box.SaveConfAndSync(boxConf); err != nil {
 		logging.LogErrorf("save box conf [%s] failed: %s", box.ID, err)
 	}
 	box.Unindex()
@@ -522,7 +522,7 @@ func mountBox(boxID string) (alreadyMount bool, err error) {
 			boxConf := box.GetConf()
 			boxConf.Closed = true
 			boxConf.Sort = sort
-			box.SaveConf(boxConf)
+			box.SaveConfAndSync(boxConf)
 		}
 
 		task.AppendAsyncTaskWithDelay(task.PushMsg, 3*time.Second, util.PushErrMsg, Conf.Language(244), 7000)
@@ -539,6 +539,7 @@ func mountBox(boxID string) (alreadyMount bool, err error) {
 
 	for _, box := range Conf.GetOpenedBoxes() {
 		if box.ID == boxID {
+			clearClosedBoxNotification(boxID)
 			return true, nil
 		}
 	}
@@ -553,7 +554,7 @@ func mountBox(boxID string) (alreadyMount bool, err error) {
 	box := &Box{ID: boxID}
 	boxConf := box.GetConf()
 	boxConf.Closed = false
-	if err := box.SaveConf(boxConf); err != nil {
+	if err := box.SaveConfAndSync(boxConf); err != nil {
 		logging.LogErrorf("save box conf [%s] failed: %s", boxID, err)
 	}
 	if boxConf.Encrypted {
@@ -569,6 +570,9 @@ func mountBox(boxID string) (alreadyMount bool, err error) {
 	box = Conf.Box(boxID)
 	if 0 < len(files) || (nil != box && box.Exist(boxDocPath(box.ID))) {
 		box.Index()
+	}
+	if Conf.Box(boxID) != nil {
+		clearClosedBoxNotification(boxID)
 	}
 
 	if reMountGuide {

@@ -53,36 +53,17 @@ func SyncDataDownload() (err error) {
 		return
 	}
 
-	scope := lanSyncScope()
-	latestID := getSyncCloudLatestID()
-	if "" != latestID {
-		_, err = syncRemoteRequests.do(scope, latestID, func() error {
-			lockSync()
-			defer unlockSync()
-			if syncRemoteRequests.isCompleted(scope, latestID) {
-				return nil
-			}
-			err := syncDataDownloadLocked()
-			if nil == err {
-				completeCurrentSyncRemoteRequest(scope)
-			}
-			return err
-		})
-		return
-	}
-
 	unlock, ok := lockSyncRequest(&syncDownloadRequests)
 	if !ok {
 		return
 	}
 	defer unlock()
-	if err = syncDataDownloadLocked(); nil == err {
-		completeCurrentSyncRemoteRequest(scope)
-	}
+	err = syncDataDownloadLocked()
 	return
 }
 
 func syncDataDownloadLocked() (err error) {
+	revision := pendingSync.begin()
 	util.BroadcastByType("main", "syncing", 0, Conf.Language(81), nil)
 
 	now := util.CurrentTimeMillis()
@@ -94,6 +75,7 @@ func syncDataDownloadLocked() (err error) {
 		code = 2
 	}
 	util.BroadcastByType("main", "syncing", code, Conf.Sync.Stat, nil)
+	pendingSync.finish(revision, err == nil, notifySyncPending)
 	if 1 == code {
 		consumeShorthands()
 	}
@@ -151,6 +133,7 @@ func SyncDataUpload() (err error) {
 		return
 	}
 	defer unlock()
+	revision := pendingSync.begin()
 	util.BroadcastByType("main", "syncing", 0, Conf.Language(81), nil)
 
 	now := util.CurrentTimeMillis()
@@ -162,10 +145,12 @@ func SyncDataUpload() (err error) {
 		code = 2
 	}
 	util.BroadcastByType("main", "syncing", code, Conf.Sync.Stat, nil)
+	pendingSync.finish(revision, err == nil, notifySyncPending)
 	return
 }
 
 var (
+	pendingSync      syncPendingState
 	syncSameCount    = atomic.Int32{}
 	autoSyncErrCount = 0
 	fixSyncInterval  = 5 * time.Minute
@@ -173,9 +158,13 @@ var (
 	syncPlanTimeLock = sync.Mutex{}
 	syncPlanTime     = time.Now().Add(fixSyncInterval)
 
-	BootSyncSucc = -1 // -1：未执行，0：执行成功，1：执行失败
+	BootSyncSucc atomic.Int32 // -1：未执行，0：执行成功，1：执行失败
 	ExitSyncSucc = -1
 )
+
+func init() {
+	BootSyncSucc.Store(-1)
+}
 
 func SyncDataJob() {
 	syncPlanTimeLock.Lock()
@@ -203,22 +192,54 @@ func BootSyncData() {
 	lockSync()
 	defer unlockSync()
 
-	util.IncBootProgress(3, Conf.Language(307))
-	BootSyncSucc = 0
-	logging.LogInfof("sync before boot")
+	iosAfterBoot := util.ContainerIOS == util.Container && util.IsBooted()
+	if !iosAfterBoot {
+		util.IncBootProgress(3, Conf.Language(307))
+	}
+	BootSyncSucc.Store(-1)
+	if iosAfterBoot {
+		logging.LogInfof("sync after boot")
+	} else {
+		logging.LogInfof("sync before boot")
+	}
 
 	now := util.CurrentTimeMillis()
 	Conf.Sync.Synced = now
+	revision := pendingSync.begin()
+	if iosAfterBoot {
+		// 本地界面已可编辑，保持同步入口可见直到云端合并成功。
+		notifySyncPending(true)
+	}
 	util.BroadcastByType("main", "syncing", 0, Conf.Language(81), nil)
-	err := bootSyncRepoWithDNSRetry()
+	var cloudPublished bool
+	var err error
+	if iosAfterBoot {
+		cloudPublished, err = syncRepoWithDNSRetry(false, false)
+	} else {
+		err = bootSyncRepoWithDNSRetry()
+	}
 	code := 1
 	if err != nil {
 		code = 2
+		BootSyncSucc.Store(1)
+		if iosAfterBoot {
+			msg := formatSyncRepoErrorMsg(err)
+			Conf.Sync.Stat = msg
+			Conf.Save()
+			pushSyncStatusBar(msg)
+			util.PushErrMsg(msg, 0)
+		}
+	} else {
+		BootSyncSucc.Store(0)
 	}
 	util.BroadcastByType("main", "syncing", code, Conf.Sync.Stat, nil)
+	pendingSync.finish(revision, err == nil, notifySyncPending)
 	if 1 == code {
 		// 启动同步成功后消费本地速记临时文件，避免移动端开启云同步时需手动触发同步才能刷新闪念速记
 		consumeShorthands()
+	}
+	if iosAfterBoot {
+		completeSyncPerception(cloudPublished, err)
 	}
 	return
 }
@@ -305,6 +326,7 @@ func syncData(exit, byHand bool) {
 }
 
 func syncDataLocked(exit, byHand bool) error {
+	revision := pendingSync.begin()
 	util.BroadcastByType("main", "syncing", 0, Conf.Language(81), nil)
 	if exit {
 		ExitSyncSucc = 0
@@ -318,24 +340,33 @@ func syncDataLocked(exit, byHand bool) error {
 	now := util.CurrentTimeMillis()
 	Conf.Sync.Synced = now
 
-	dataChanged, err := syncRepoWithDNSRetry(exit, byHand)
+	cloudPublished, err := syncRepoWithDNSRetry(exit, byHand)
 	code := 1
 	if err != nil {
 		code = 2
+	} else {
+		BootSyncSucc.Store(0)
 	}
 	util.BroadcastByType("main", "syncing", code, Conf.Sync.Stat, nil)
+	pendingSync.finish(revision, err == nil, notifySyncPending)
 
 	if !exit && 1 == code {
 		consumeShorthands()
 	}
 
+	completeSyncPerception(cloudPublished, err)
+	return err
+}
+
+// completeSyncPerception 恢复感知连接，并在自动同步成功发布新版本后通知其他设备。
+func completeSyncPerception(cloudPublished bool, err error) {
 	if nil == webSocketConn && Conf.Sync.Perception {
 		// 如果 websocket 连接已经断开，则重新连接
 		connectSyncWebSocket()
 	}
 
-	if 1 == Conf.Sync.Mode && nil != webSocketConn && Conf.Sync.Perception && dataChanged {
-		// 如果处于自动同步模式且不是由 WS 触发的同步，则通知其他设备上的内核进行同步
+	if nil == err && cloudPublished && 1 == Conf.Sync.Mode && nil != webSocketConn && Conf.Sync.Perception {
+		// 自动同步成功发布新云端版本后通知其他设备，纯下载不发送同步信号。
 		request := map[string]any{
 			"cmd":    "synced",
 			"synced": Conf.Sync.Synced,
@@ -344,7 +375,6 @@ func syncDataLocked(exit, byHand bool) error {
 			logging.LogErrorf("write websocket message failed: %v", writeErr)
 		}
 	}
-	return err
 }
 
 func checkSync(boot, exit, byHand bool) bool {
@@ -595,11 +625,22 @@ func SetSyncMode(mode int) {
 	Conf.Save()
 }
 
-func SetSyncProvider(provider int) (err error) {
+func SetSyncProvider(provider int, completeAssets bool) (err error) {
 	release := lockAssetSourceChange()
 	defer release()
 	if provider != Conf.Sync.Provider {
-		if err = requireCompleteAssetDownloads(); err != nil {
+		if completeAssets {
+			util.PushEndlessProgress(Conf.Language(398))
+			defer util.ClearPushProgress(100)
+			err = ensureCompleteSyncAssets(func() { util.PushEndlessProgress(Conf.Language(399)) })
+			if err != nil {
+				logging.LogWarnf("complete data before switching sync provider [%d -> %d] failed: %s", Conf.Sync.Provider, provider, err)
+				err = fmt.Errorf(Conf.Language(400), err)
+			}
+		} else {
+			err = requireCompleteAssetDownloads()
+		}
+		if err != nil {
 			return
 		}
 	}
@@ -875,6 +916,9 @@ func formatRepoErrorMsg(err error) string {
 		msg = Conf.Language(129)
 	} else if errors.Is(err, dejavu.ErrLockCloudFailed) {
 		msg = Conf.Language(188)
+		if detail := cloudLockErrorDetail(err, Conf.Language); "" != detail {
+			msg += " " + detail
+		}
 	} else if errors.Is(err, dejavu.ErrCloudLocked) {
 		msg = Conf.Language(189)
 	} else if errors.Is(err, dejavu.ErrRepoFatal) {
@@ -959,10 +1003,10 @@ func flushAndRetryOnDNSError(err error) bool {
 
 // syncRepoWithDNSRetry 执行一次同步，若失败且判定为 DNS 类错误，则刷新系统 DNS 缓存后重试一次。
 // 统一封装 DNS 重试逻辑，供主同步流程（syncData）与启动后台同步复用。
-func syncRepoWithDNSRetry(exit, byHand bool) (dataChanged bool, err error) {
-	dataChanged, err = syncRepo(exit, byHand)
+func syncRepoWithDNSRetry(exit, byHand bool) (cloudPublished bool, err error) {
+	cloudPublished, err = syncRepo(exit, byHand)
 	if nil != err && flushAndRetryOnDNSError(err) {
-		dataChanged, err = syncRepo(exit, byHand)
+		cloudPublished, err = syncRepo(exit, byHand)
 	}
 	return
 }
@@ -998,6 +1042,10 @@ func loadSyncIgnoreLines() (ret []string, err error) {
 	defer func() {
 		ret = append(ret, "/.siyuan/conf.json")
 	}()
+	// 同步或快照可能重新带回隔离块，加载规则前完成清理。
+	if err = util.MigrateAppearanceSyncIgnore(); err != nil {
+		return
+	}
 	ignore := filepath.Join(util.DataDir, ".siyuan", "syncignore")
 	err = os.MkdirAll(filepath.Dir(ignore), 0755)
 	if err != nil {
@@ -1044,6 +1092,11 @@ func loadSyncIgnoreLines() (ret []string, err error) {
 func IncSync() {
 	syncSameCount.Store(0)
 	planSyncAfter(time.Duration(Conf.Sync.Interval) * time.Second)
+	pendingSync.change(notifySyncPending)
+}
+
+func notifySyncPending(pending bool) {
+	util.BroadcastByType("main", "syncPending", 0, "", pending)
 }
 
 func planSyncAfter(d time.Duration) {
@@ -1175,8 +1228,7 @@ func connectSyncWebSocket() {
 			data := result.Data.(map[string]any)
 			switch data["cmd"].(string) {
 			case "synced":
-				// Improve data synchronization perception https://github.com/siyuan-note/siyuan/issues/13000
-				SyncDataDownload()
+				syncDataFromCloud()
 			case "kernels":
 				onlineKernelsLock.Lock()
 

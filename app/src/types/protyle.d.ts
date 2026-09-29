@@ -190,8 +190,6 @@ declare class Lute {
 
     public static New(): Lute;
 
-    public static EChartsMindmapStr(text: string): string;
-
     public static NewNodeID(): string;
 
     public static Sanitize(html: string): string;
@@ -501,6 +499,7 @@ interface IProtyleOptions {
     }[],
     action?: TProtyleAction[],
     scrollPosition?: ScrollLogicalPosition,
+    scrollAttr?: IScrollAttr,
     mode?: TEditorMode,
     blockId?: string
     rootId?: string

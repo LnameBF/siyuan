@@ -1,6 +1,10 @@
+import {getConditionalItemStyle, getConditionalCellStyle} from "./conditionalColor";
+import {isTableLikeView} from "./viewType";
+import {updateFrozenColumns} from "./frozenColumns";
 import {hasClosestBlock, hasClosestByClassName, hasTopClosestByAttribute} from "../../util/hasClosest";
 import {focusBlock} from "../../util/selection";
 import {Menu} from "../../../plugin/Menu";
+import {openViewSettingMenu} from "./viewSettingMenu";
 import {transaction} from "../../wysiwyg/transaction";
 import {
     cellValueIsEmpty,
@@ -23,6 +27,7 @@ import {
     getAVSelectStat,
     getAVSelectedItemInfos,
     getAvBodyData,
+    IAVItemInfo,
     resetAVRowSelect,
     updateAVRowSelect
 } from "./virtualScroll";
@@ -61,7 +66,7 @@ export const getRowHTML = (options: {
         const primaryHidden = galleryData.fields.find(field => field.type === "block")?.hidden === true;
         const hasVisibleFields = galleryData.fields.some(field => !field.hidden);
         const emptyClass = !hasVisibleFields && galleryData.coverFrom === 0 ? " av__gallery-item--empty" : "";
-        html += `<div data-id="${galleryRow.id}" data-index="${options.rowIndex}" draggable="true" class="av__gallery-item${emptyClass}">`;
+        html += `<div data-id="${galleryRow.id}" data-index="${options.rowIndex}" draggable="true" class="av__gallery-item${emptyClass}" style="${getConditionalItemStyle(galleryRow)}">`;
         if (galleryData.coverFrom !== 0) {
             const coverClass = "av__gallery-cover av__gallery-cover--" + galleryData.cardAspectRatio;
             if (galleryRow.coverURL) {
@@ -132,7 +137,7 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, options.ro
     if (options.type === "kanban") {
         const kanbanRow = options.row as IAVGalleryItem;
         const kanbanData = options.data as IAVKanban;
-        html += `<div data-id="${kanbanRow.id}" data-index="${options.rowIndex}" draggable="true" class="av__gallery-item">`;
+        html += `<div data-id="${kanbanRow.id}" data-index="${options.rowIndex}" draggable="true" class="av__gallery-item" style="${getConditionalItemStyle(kanbanRow)}">`;
         if (kanbanData.coverFrom !== 0) {
             const coverClass = "av__gallery-cover av__gallery-cover--" + kanbanData.cardAspectRatio;
             if (kanbanRow.coverURL) {
@@ -200,12 +205,14 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, options.ro
     }
     const tableRow = options.row as IAVRow;
     const tableData = options.data as IAVTable;
+    const isList = options.type === "list";
+    const pinIndex = isList ? -1 : options.pinIndex;
 
-    html = `<div class="av__row" data-index="${options.rowIndex}" data-id="${tableRow.id}">`;
-    if (options.pinIndex > -1) {
-        html += '<div class="av__colsticky av__colsticky--freeze"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg></div>';
+    html = `<div class="av__row${tableRow.conditionalColors ? " av__row--conditional" : ""}" data-index="${options.rowIndex}" data-id="${tableRow.id}" style="${getConditionalItemStyle(tableRow)}">`;
+    if (pinIndex > -1) {
+        html += `<div class="av__colsticky av__colsticky--freeze"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg>${getFreezeDragHTML()}</div>`;
     } else {
-        html += '<div class="av__colsticky"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg></div></div>';
+        html += `<div class="av__colsticky"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg>${isList ? "" : getFreezeDragHTML()}</div></div>`;
     }
 
     tableRow.cells.forEach((cell, index) => {
@@ -218,29 +225,31 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, options.ro
         if (cell.valueType === "checkbox") {
             checkClass = cell.value?.checkbox?.checked ? " av__cell-check" : " av__cell-uncheck";
         }
-        html += `<div class="av__cell${checkClass}" data-id="${cell.id}" data-col-id="${column.id}" 
+        html += `<div class="av__cell${checkClass}${isList ? " ariaLabel" : ""}" data-id="${cell.id}" data-col-id="${column.id}" ${isList ? `aria-label="${escapeAriaLabel(column.name)}" data-position="north"` : ""}
 data-wrap="${column.wrap}" 
 data-dtype="${column.type}" 
 data-date-format="${column.dateFormat || ""}"
 ${column.renderTemplate?.trim() ? 'data-render-template="true"' : ""}
 data-align="${column.align || ""}"
 ${cell.value?.isDetached ? ' data-detached="true"' : ""} 
-style="width: ${escapeAttr(column.width) || "200px"};
-${cell.bgColor ? `background-color:${cell.bgColor};` : ""}
+style="${getConditionalCellStyle(tableRow, column.id)}${isList ? "" : `width: ${escapeAttr(column.width) || "200px"};`}
+${cell.bgColor && !tableRow.conditionalColors?.background && !tableRow.conditionalColors?.properties?.[column.id] ? `background-color:${cell.bgColor};` : ""}
 ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, options.rowIndex, tableData.showIcon, "table", column.options, column.dateFormat, column.renderTemplate)}</div>`;
 
-        if (options.pinIndex === index) {
+        if (pinIndex === index) {
             html += "</div>";
         }
     });
     return html + "<div></div></div>";
 };
 
+const getFreezeDragHTML = () => `<div class="av__freeze-drag ariaLabel" data-position="east" aria-label="${escapeAttr(window.siyuan.languages.freezeDrag)}"></div>`;
+
 export const getFieldIdByCellElement = (cellElement: Element, viewType: TAVView): string => {
     if (isCustomAttr(cellElement)) {
         return cellElement.getAttribute("data-row-id");
     }
-    return (hasClosestByClassName(cellElement, viewType === "table" ? "av__row" : "av__gallery-item") as HTMLElement).dataset.id;
+    return (hasClosestByClassName(cellElement, isTableLikeView(viewType) ? "av__row" : "av__gallery-item") as HTMLElement).dataset.id;
 };
 
 export const selectRow = (checkElement: Element, type: "toggle" | "select" | "unselect" | "unselectAll") => {
@@ -325,7 +334,7 @@ export const updateHeader = (rowElement: HTMLElement) => {
 export const updateAVSelectionStatus = (blockElement: HTMLElement) => {
     const avType = blockElement.getAttribute("data-av-type") as TAVView;
     let selectCount = 0;
-    if (avType === "table") {
+    if (isTableLikeView(avType)) {
         blockElement.querySelectorAll(".av__body").forEach((bodyElement: HTMLElement) => {
             if (hasClosestByClassName(bodyElement, "av") !== blockElement) {
                 return;
@@ -384,7 +393,7 @@ export const setPage = (blockElement: Element) => {
     blockElement.querySelectorAll(".av__body").forEach((item: HTMLElement) => {
         const pageSize = item.dataset.pageSize;
         if (pageSize) {
-            const currentCount = item.querySelectorAll(avType === "table" ? ".av__row:not(.av__row--header)" : ".av__gallery-item").length;
+            const currentCount = item.querySelectorAll(isTableLikeView(avType) ? ".av__row:not(.av__row--header)" : ".av__gallery-item").length;
             if (parseInt(pageSize) < currentCount) {
                 item.dataset.pageSize = currentCount.toString();
             }
@@ -415,6 +424,7 @@ export const insertAttrViewBlockAnimation = (options: {
         return previousElement;
     };
     options.blockElement.querySelector('[data-type="av-search"]').textContent = "";
+    const isList = options.blockElement.getAttribute("data-av-type") === "list";
     const groupQuery = options.groupID ? `.av__body[data-group-id="${options.groupID}"] ` : "";
     let previousElement = options.blockElement.querySelector(groupQuery + `.av__row[data-id="${options.previousId}"]`) || options.blockElement.querySelector(groupQuery + ".av__row--header");
     // 有排序需要加入最后一行
@@ -431,10 +441,10 @@ export const insertAttrViewBlockAnimation = (options: {
     if (!previousElement) {
         return;
     }
-    let cellsHTML = '<div class="av__colsticky"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg></div></div>';
+    let cellsHTML = `<div class="av__colsticky"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg>${getFreezeDragHTML()}</div></div>`;
     const pinIndex = previousElement.querySelectorAll(".av__colsticky .av__cell").length - 1;
     if (pinIndex > -1) {
-        cellsHTML = '<div class="av__colsticky av__colsticky--freeze"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg></div>';
+        cellsHTML = `<div class="av__colsticky av__colsticky--freeze"><div class="av__firstcol"><svg><use xlink:href="#iconUncheck"></use></svg>${getFreezeDragHTML()}</div>`;
     }
     previousElement.querySelectorAll(".av__cell").forEach((item: HTMLElement, index) => {
         let lineNumber = 1;
@@ -450,8 +460,7 @@ data-wrap="${item.dataset.wrap}"
 data-dtype="${item.dataset.dtype}" 
 data-date-format="${item.dataset.dateFormat || ""}"
 data-align="${item.dataset.align || ""}"
-style="width: ${item.style.width};"
-${colType === "block" ? ' data-detached="true"' : ""}>${renderCell(genCellValue(colType, null), lineNumber,
+style="${isList ? "" : `width: ${item.style.width};`}"${colType === "block" ? ' data-detached="true"' : ""}>${renderCell(genCellValue(colType, null), lineNumber,
     true, "table", undefined, item.dataset.dateFormat as TAVDateFormat)}</div>`;
         if (pinIndex === index) {
             cellsHTML += "</div>";
@@ -497,14 +506,28 @@ const applyFixedClip = (el: HTMLElement, scrollEl: HTMLElement) => {
     const scrollLeft = scrollEl.scrollLeft;
     const clientWidth = scrollEl.clientWidth;
     const scrollWidth = scrollEl.scrollWidth;
-    if (scrollWidth <= clientWidth) {
-        if (el.style.clipPath) {
-            el.style.clipPath = "";
-        }
-        return;
-    }
     const right = Math.max(0, scrollWidth - scrollLeft - clientWidth);
-    el.style.clipPath = `inset(0 ${right}px 0 ${scrollLeft}px)`;
+    applyFixedViewportClip(el, scrollWidth > clientWidth ? scrollLeft : 0, right);
+};
+
+const applyFixedViewportClip = (el: HTMLElement, left = 0, right = 0) => {
+    // 固定栏按编辑器与分屏的交集裁剪，避免分屏缩小时覆盖相邻文档。
+    const viewport = el.closest(".protyle-content");
+    const pane = el.closest(".layout-tab-container");
+    const rect = el.getBoundingClientRect();
+    let top = 0;
+    let bottom = 0;
+    [viewport, pane].forEach(element => {
+        if (!element) {
+            return;
+        }
+        const bounds = element.getBoundingClientRect();
+        top = Math.max(top, bounds.top - rect.top);
+        bottom = Math.max(bottom, rect.bottom - bounds.bottom);
+        left = Math.max(left, bounds.left - rect.left);
+        right = Math.max(right, rect.right - bounds.right);
+    });
+    el.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
 };
 
 const stickyScrollElMap = new WeakMap<HTMLElement, HTMLElement>();
@@ -571,6 +594,7 @@ const syncFixedRowPos = (item: HTMLElement, bodyRect: DOMRect, scrollLeft: numbe
 };
 
 export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement, status: "top" | "bottom" | "all") => {
+    updateFrozenColumns(blockElement);
     // 内部滚动的反链数据库不使用相对窗口固定的表头，避免占位和固定坐标干扰内部布局。
     const skipFixed = blockElement.classList.contains("av--backlink") || hasTopClosestByAttribute(blockElement, "fold", "1");
     if (skipFixed) {
@@ -592,7 +616,7 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
         bindHeaderScrollSync(blockElement, scrollEl);
     }
 
-    // 先批量读取所有几何信息，再统一写入 style，避免读-写交错触发强制重排
+    // 先批量读取吸顶判定所需的几何信息，再更新固定栏位置及裁剪范围。
     const elementRect = scrollElement.getBoundingClientRect();
     const breadcrumbElement = scrollElement.previousElementSibling as HTMLElement;
     // 移动端面包屑隐藏后仍保留布局尺寸，吸顶位置需回到滚动视口顶部。
@@ -620,8 +644,18 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
             ? viewsElement.nextElementSibling as HTMLElement
             : viewsElement;
         const viewsRect = placeholderElement.getBoundingClientRect();
-        const blockRect = blockElement.getBoundingClientRect();
+        // 吸顶栏按当前可用宽度换行，并同步占位高度，保持表头位置与文档布局一致。
+        if (placeholderElement !== viewsElement) {
+            const width = Math.round(viewsRect.width) + "px";
+            if (viewsElement.style.width !== width) {
+                viewsElement.style.width = width;
+            }
+        }
         const height = viewsElement.offsetHeight;
+        if (placeholderElement !== viewsElement && placeholderElement.style.height !== height + "px") {
+            placeholderElement.style.height = height + "px";
+        }
+        const blockRect = blockElement.getBoundingClientRect();
         const shouldFix = height > 0 && viewsRect.top < stickyTop && blockRect.bottom > stickyTop;
         const top = blockRect.bottom < stickyTop + height ? Math.round(blockRect.bottom - height) : stickyTop;
         viewsTask = {
@@ -692,7 +726,7 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
         });
     }
 
-    // 第二遍：纯写入，此时不再读取布局，仅触发一次重排
+    // 第二遍：应用固定栏位置，并按定位后的实际边界裁剪。
     const stickyBottom = Math.round(window.innerHeight - elementRect.bottom);
     if (viewsTask) {
         if (viewsTask.shouldFix) {
@@ -702,6 +736,7 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
             viewsTask.element.style.left = viewsTask.left + "px";
             viewsTask.element.style.top = viewsTask.top + "px";
             viewsTask.element.style.width = viewsTask.width + "px";
+            applyFixedViewportClip(viewsTask.element);
         } else {
             removeFixedRow(viewsTask.element, "av__views--fixed", "av__views-placeholder");
         }
@@ -712,10 +747,10 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
             if (!item.classList.contains("av__row--header--fixed")) {
                 addFixedRow(item, "av__row--header--fixed", "av__row--header-placeholder", headerH, Math.round(bodyRect.width));
             }
-            syncFixedRowPos(item, bodyRect, task.scrollLeft, task.scrollEl);
             item.style.top = bodyRect.bottom < headerStickyTop + headerH
                 ? Math.round(bodyRect.bottom - headerH) + "px"
                 : headerStickyTop + "px";
+            syncFixedRowPos(item, bodyRect, task.scrollLeft, task.scrollEl);
         } else {
             removeFixedRow(item, "av__row--header--fixed", "av__row--header-placeholder");
         }
@@ -726,8 +761,8 @@ export const stickyRow = (blockElement: HTMLElement, scrollElement: HTMLElement,
             if (!item.classList.contains("av__row--footer--fixed")) {
                 addFixedRow(item, "av__row--footer--fixed", "av__row--footer--placeholder", footerH, Math.round(bodyRect.width));
             }
-            syncFixedRowPos(item, bodyRect, task.scrollLeft, task.scrollEl);
             item.style.bottom = stickyBottom + "px";
+            syncFixedRowPos(item, bodyRect, task.scrollLeft, task.scrollEl);
         } else {
             removeFixedRow(item, "av__row--footer--fixed", "av__row--footer--placeholder");
         }
@@ -857,16 +892,11 @@ export const setPageSize = (options: {
             });
         }
     });
-    const rect = options.target.getBoundingClientRect();
-    menu.open({
-        x: rect.left,
-        y: rect.bottom,
-        h: rect.height
-    });
+    openViewSettingMenu(menu, options.target);
 };
 
-export const deleteRow = (blockElement: HTMLElement, protyle: IProtyle) => {
-    const selectedItems = getAVSelectedItemInfos(blockElement);
+export const deleteRow = (blockElement: HTMLElement, protyle: IProtyle,
+                          selectedItems: IAVItemInfo[] = getAVSelectedItemInfos(blockElement)) => {
     if (selectedItems.length === 0) {
         return;
     }
@@ -911,14 +941,16 @@ export const deleteRow = (blockElement: HTMLElement, protyle: IProtyle) => {
         data: newUpdated,
     }], undoOperations);
     const selectedIDs = new Set(selectedItems.map(item => item.itemID));
-    blockElement.querySelectorAll<HTMLElement>(".av__row[data-id], .av__gallery-item[data-id]").forEach(item => {
+    blockElement.querySelectorAll<HTMLElement>(".av__row[data-id], .av__gallery-item[data-id], .av__calendar-item[data-id]").forEach(item => {
         if (selectedIDs.has(item.dataset.id)) {
             item.remove();
         }
     });
     clearSelect(["row", "galleryItem"], blockElement);
-    stickyRow(blockElement, protyle.contentElement, "all");
-    updateHeader(blockElement.querySelector(".av__row"));
+    if (blockElement.dataset.avType !== "calendar") {
+        stickyRow(blockElement, protyle.contentElement, "all");
+        updateHeader(blockElement.querySelector(".av__row"));
+    }
     blockElement.setAttribute("updated", newUpdated);
 };
 

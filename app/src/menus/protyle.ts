@@ -78,11 +78,13 @@ import {
     TABLE_DEFAULT_COLUMN_WIDTH,
 } from "../protyle/util/tableColumnWidth";
 import {getParentDocumentID} from "../protyle/util/parentDocument";
+import {prepareInlineElementBoundaryMutation} from "../protyle/util/inlineElementBoundary";
 import {getZoomFocusScrollAttr, shouldFocusAfterZoom} from "../protyle/util/focusRestore";
 import {scrollCenter} from "../util/highlightById";
 import {
     getSemanticInlineVisibleText,
-    normalizeSemanticInlineElement
+    normalizeSemanticInlineElement,
+    stripSemanticMarkersFromRangeText,
 } from "../protyle/util/inlineElementMarker";
 
 const renderAssetList = (element: Element, k: string, position: IPosition, exts: string[] = []) => {
@@ -775,7 +777,7 @@ export const contentMenu = (protyle: IProtyle, nodeElement: Element) => {
             accelerator: window.siyuan.config.keymap.editor.general.copyPlainText.custom,
             click() {
                 focusByRange(getEditorRange(nodeElement));
-                copyPlainText(getSelection().getRangeAt(0).toString());
+                copyPlainText(stripSemanticMarkersFromRangeText(getSelection().getRangeAt(0)));
             }
         }).element);
         if (protyle.disabled || captionElement) {
@@ -798,6 +800,7 @@ export const contentMenu = (protyle: IProtyle, nodeElement: Element) => {
             label: window.siyuan.languages.delete,
             click() {
                 const currentRange = getEditorRange(nodeElement);
+                prepareInlineElementBoundaryMutation(currentRange);
                 currentRange.insertNode(document.createElement("wbr"));
                 currentRange.extractContents();
                 focusByWbr(nodeElement, currentRange);
@@ -823,7 +826,7 @@ export const contentMenu = (protyle: IProtyle, nodeElement: Element) => {
                     id: "copyPlainText",
                     label: window.siyuan.languages.copyPlainText,
                     click() {
-                        copyPlainText(inlineElement.textContent);
+                        copyPlainText(getSemanticInlineVisibleText(inlineElement));
                     }
                 }).element);
                 if (!protyle.disabled) {
@@ -1081,6 +1084,15 @@ export const zoomOut = (options: {
         getDocParam.notebook = options.protyle.notebookId;
     }
     fetchPost("/api/filetree/getDoc", getDocParam, async (getResponse) => {
+        // 退出聚焦时先确定可见的折叠祖先，使滚动和延迟恢复光标使用同一目标。
+        if (options.focusId && options.id === options.protyle.block.rootID) {
+            const unfoldResponse = await fetchSyncPost("/api/block/getUnfoldedParentID", {id: options.focusId});
+            if (unfoldResponse.code === 0 && unfoldResponse.data.parentID &&
+                unfoldResponse.data.parentID !== options.focusId) {
+                options.focusId = unfoldResponse.data.parentID;
+                options.focusPosition = undefined;
+            }
+        }
         const action: TProtyleAction[] = [Constants.CB_GET_HTML];
         if (!options.isPushBack) {
             action.push(Constants.CB_GET_UNUNDO);
@@ -1401,6 +1413,7 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
         let rangeElement: HTMLInputElement;
         window.siyuan.menus.menu.append(new MenuItem({
             id: "width",
+            icon: "iconWidth",
             label: window.siyuan.languages.width,
             submenu: [{
                 id: "widthInput",
@@ -1466,6 +1479,7 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
         let rangeHeightElement: HTMLInputElement;
         window.siyuan.menus.menu.append(new MenuItem({
             id: "height",
+            icon: "iconHeight",
             label: window.siyuan.languages.height,
             submenu: [{
                 id: "heightInput",
@@ -1483,9 +1497,6 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
                         imgElement.parentElement.style.width = "";
                     });
                     inputElement.addEventListener("blur", () => {
-                        if (inputElement.value === imgElement.style.height.replace("px", "")) {
-                            return;
-                        }
                         nodeElement.setAttribute("updated", dayjs().format("YYYYMMDDHHmmss"));
                         updateTransaction(protyle, nodeElement, html);
                         window.siyuan.menus.menu.remove();
@@ -2452,7 +2463,7 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
         });
     }
     otherMenus.push({id: "separator_1", type: "separator"});
-    const horizontalCells = alignWholeTable ? Array.from(tableElement.rows[0].cells) : [cellElement];
+    const horizontalCells = [cellElement];
     const alignmentMenus: IMenu[] = [{
         id: "alignLeft",
         icon: "iconAlignLeft",
@@ -2596,6 +2607,8 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
             });
             inputElement.addEventListener("keydown", (event: KeyboardEvent) => {
                 if (!event.isComposing && event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
                     insertRowAbove(protyle, range, cellElement, nodeElement, parseInt(element.querySelector("input").value));
                     window.siyuan.menus.menu.remove();
                 }
@@ -2620,6 +2633,8 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
                 });
                 inputElement.addEventListener("keydown", (event: KeyboardEvent) => {
                     if (!event.isComposing && event.key === "Enter") {
+                        event.preventDefault();
+                        event.stopPropagation();
                         insertRow(protyle, range, cellElement, nodeElement, parseInt(element.querySelector("input").value));
                         window.siyuan.menus.menu.remove();
                     }
@@ -2645,6 +2660,8 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
                 });
                 inputElement.addEventListener("keydown", (event: KeyboardEvent) => {
                     if (!event.isComposing && event.key === "Enter") {
+                        event.preventDefault();
+                        event.stopPropagation();
                         insertColumn(protyle, nodeElement, cellElement, "beforebegin", range, parseInt(element.querySelector("input").value));
                         window.siyuan.menus.menu.remove();
                     }
@@ -2670,6 +2687,8 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
                 });
                 inputElement.addEventListener("keydown", (event: KeyboardEvent) => {
                     if (!event.isComposing && event.key === "Enter") {
+                        event.preventDefault();
+                        event.stopPropagation();
                         insertColumn(protyle, nodeElement, cellElement, "afterend", range, parseInt(element.querySelector("input").value));
                         window.siyuan.menus.menu.remove();
                     }
@@ -2772,7 +2791,7 @@ export const setFoldById = (data: {
 }, protyle: IProtyle) => {
     Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${data.id}"]`)).find((item: Element) => {
         if (!isInEmbedBlock(item)) {
-            const operations = setFold(protyle, item, true, false, true, true);
+            const operations = setFold(protyle, item, true, false, true);
             if (hasViewFoldContext(protyle)) {
                 const occurrenceID = getViewFoldOccurrenceID(protyle, item);
                 void setViewFoldTransient(protyle, item, false, undefined, true).then(() => {

@@ -73,10 +73,17 @@ const {
     unsafeRemoteChromiumSwitchNames,
 } = require("./remoteKernel");
 const {dispatchWindowMessage} = require("./windowMessaging");
+const {WindowWorkspaceRegistry, flushWindowWorkspaces} = require("./windowWorkspaces");
+const {captureWindowGeometry, normalizeWindowGeometry, restoreWindowGeometry} = require("./windowGeometry");
+const windowWorkspaces = new WindowWorkspaceRegistry();
 const {createNotebookSystemLock, prepareNotebookSystemLock} = require("./notebookSystemLock");
 const {
     readAccessibilitySetting, writeAccessibilitySetting, getAccessibilityOverride, configureAccessibility,
 } = require("./accessibility");
+
+const {
+    readLinuxInputMethodSetting, writeLinuxInputMethodSetting, getLinuxInputMethodOverride, configureLinuxInputMethod,
+} = require("./linuxInputMethod");
 
 process.noAsar = true;
 const appDir = path.dirname(app.getAppPath());
@@ -85,6 +92,7 @@ const simulateRosetta = process.argv.includes("--simulate-rosetta");
 const appVer = app.getVersion();
 const confDir = path.join(app.getPath("home"), ".config", "siyuan");
 const windowStatePath = path.join(confDir, "windowState.json");
+const linuxInputMethodSettingPath = path.join(confDir, "linux-input-method.json");
 const accessibilitySettingPath = path.join(confDir, "accessibility.json");
 const appCrashLogPath = path.join(confDir, "app.crash.log");
 const appCrashMarkerPath = path.join(confDir, "app.crash.json");
@@ -766,6 +774,18 @@ try {
     writeLog("read accessibility setting failed: " + error.message);
 }
 configureAccessibility(app.commandLine, accessibilityEnabled);
+
+// Linux 输入法兼容设置在窗口创建前应用，显式显示后端参数保持优先。
+const linuxInputMethodOverride = getLinuxInputMethodOverride(app.commandLine);
+let linuxInputMethodEnabled = false;
+if (process.platform === "linux") {
+    try {
+        linuxInputMethodEnabled = readLinuxInputMethodSetting(linuxInputMethodSettingPath);
+    } catch (error) {
+        writeLog("read Linux input method setting failed: " + error.message);
+    }
+    configureLinuxInputMethod(app.commandLine, linuxInputMethodEnabled, process.platform);
+}
 
 try {
     firstOpen = !remoteKernelTarget && !fs.existsSync(path.join(confDir, "workspace.json"));
@@ -3104,6 +3124,25 @@ app.whenReady().then(() => {
         app.exit();
     });
     ipcMain.handle("siyuan-get", async (event, data) => {
+        if (data.cmd === "getWindowGeometry" || data.cmd === "setWindowGeometry") {
+            const window = getWindowByContentId(event.sender.id);
+            if (!window || !getWindowKernelTarget(event.sender.id) || event.senderFrame !== event.sender.mainFrame) {
+                return false;
+            }
+            return data.cmd === "getWindowGeometry" ? captureWindowGeometry(window) :
+                restoreWindowGeometry(window, data.geometry, screen);
+        }
+        if (data.cmd === "getLinuxInputMethodSetting" || data.cmd === "setLinuxInputMethodSetting") {
+            if (process.platform !== "linux" || !initializedWindowIds.has(event.sender.id) ||
+                !getWindowKernelTarget(event.sender.id) || event.senderFrame !== event.sender.mainFrame) {
+                throw new Error("Linux input method setting is unavailable");
+            }
+            if (data.cmd === "setLinuxInputMethodSetting") {
+                writeLinuxInputMethodSetting(linuxInputMethodSettingPath, data.enabled);
+                linuxInputMethodEnabled = data.enabled;
+            }
+            return {enabled: linuxInputMethodEnabled, override: linuxInputMethodOverride};
+        }
         if (data.cmd === "getAccessibilitySetting" || data.cmd === "setAccessibilitySetting") {
             if (!initializedWindowIds.has(event.sender.id) ||
                 !getWindowKernelTarget(event.sender.id) || event.senderFrame !== event.sender.mainFrame) {
@@ -3311,6 +3350,33 @@ app.whenReady().then(() => {
         }
         if (data.cmd === "getContentsId") {
             return event.sender.id;
+        }
+        if (["siyuan-window-workspace-set", "siyuan-window-workspace-focus", "siyuan-window-workspace-get-open",
+            "siyuan-window-workspace-flush-all"].includes(data.cmd)) {
+            const kernelTarget = getWindowKernelTarget(event.sender.id);
+            if (!kernelTarget) {
+                return false;
+            }
+            if (data.cmd === "siyuan-window-workspace-get-open") {
+                return windowWorkspaces.list(kernelTarget.origin);
+            }
+            if (data.cmd === "siyuan-window-workspace-flush-all") {
+                return flushWindowWorkspaces(windowWorkspaces.list(kernelTarget.origin)
+                    .map(id => windowWorkspaces.get(kernelTarget.origin, id)).filter(Boolean), ipcMain);
+            }
+            if (data.cmd === "siyuan-window-workspace-focus") {
+                const window = windowWorkspaces.get(kernelTarget.origin, data.id);
+                if (window) {
+                    showWindow(window);
+                    return true;
+                }
+                return false;
+            }
+            const window = getWindowByContentId(event.sender.id);
+            if (!window || getWindowPathname(window) !== "/stage/build/app/window.html") {
+                return false;
+            }
+            return windowWorkspaces.associate(window, kernelTarget.origin, data.id);
         }
         if (data.cmd === "isAlwaysOnTop") {
             const wnd = getWindowByContentId(event.sender.id);
@@ -3711,15 +3777,28 @@ app.whenReady().then(() => {
         if (kernelTarget.mode === "remote") {
             windowURL.searchParams.set("remote", "1");
         }
+        const workspaceID = windowURL.searchParams.get("windowWorkspace");
+        if (workspaceID) {
+            if (!/^\d{14}-[a-z0-9]{7}$/.test(workspaceID)) {
+                return;
+            }
+            const existingWindow = windowWorkspaces.get(kernelTarget.origin, workspaceID);
+            if (existingWindow) {
+                showWindow(existingWindow);
+                return;
+            }
+        }
         const mainWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
         const mainBounds = mainWindow.getBounds();
         const mainScreen = screen.getDisplayNearestPoint({x: mainBounds.x, y: mainBounds.y});
+        const geometry = workspaceID ? normalizeWindowGeometry(data.windowGeometry, screen) : undefined;
         const win = new BrowserWindow({
             title: "SiYuan",
             show: true,
             trafficLightPosition: {x: 8, y: 13},
             width: Math.floor(data.width || mainScreen.size.width * 0.7),
             height: Math.floor(data.height || mainScreen.size.height * 0.9),
+            ...geometry,
             minWidth: 493,
             minHeight: 376,
             fullscreenable: true,
@@ -3741,7 +3820,18 @@ app.whenReady().then(() => {
         bindSpellcheckContextMenu(win.webContents);
         rememberWindowKernelTarget(win, kernelTarget);
 
-        if (data.position) {
+        if (workspaceID) {
+            windowWorkspaces.associate(win, kernelTarget.origin, workspaceID);
+        }
+
+        if (geometry) {
+            if (data.windowGeometry.maximized) {
+                win.maximize();
+            }
+            if (data.windowGeometry.fullscreen) {
+                win.setFullScreen(true);
+            }
+        } else if (data.position) {
             win.setPosition(data.position.x, data.position.y);
         } else {
             win.center();
@@ -3765,7 +3855,7 @@ app.whenReady().then(() => {
             event.preventDefault();
         });
         const targetScreen = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-        if (mainScreen.id !== targetScreen.id) {
+        if (!geometry && mainScreen.id !== targetScreen.id) {
             win.setBounds(targetScreen.workArea);
         }
     });

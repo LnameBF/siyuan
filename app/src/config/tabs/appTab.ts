@@ -26,6 +26,7 @@ import {afterExport} from "../../protyle/export/util";
 import {genConfigItemMainHtml, genConfigItemName} from "../render/fragments";
 import {sendAppSetting} from "./appRuntime";
 import {getHostCapabilities} from "../../util/hostCapabilities";
+import {genWorkspaceStorageHtml, mountWorkspaceStorage} from "./workspaceStorage";
 
 /// #if MOBILE
 const registerAppWorkspaceGroup = (tab: SettingTabBuilder) => {
@@ -231,6 +232,22 @@ const registerAppGeneralGroup = (tab: SettingTabBuilder) => {
 </label>`,
         afterMount: mountAccessibilitySetting,
     });
+    if (process.platform === "linux") {
+        group.slot({
+            key: "linuxInputMethod",
+            keywords: [window.siyuan.languages.linuxInputMethod, window.siyuan.languages.linuxInputMethodTip],
+            html: () => `<label class="fn__flex b3-label config-item">
+        <div class="fn__flex-1 config-item__main">
+            ${genConfigItemName(window.siyuan.languages.linuxInputMethod)}
+            <div class="b3-label__text">${window.siyuan.languages.linuxInputMethodTip}</div>
+            <div id="linuxInputMethodStatus" class="b3-label__text fn__none" role="status"></div>
+        </div>
+        <span class="fn__space"></span>
+        <input id="linuxInputMethod" class="b3-switch fn__flex-center" type="checkbox" disabled>
+    </label>`,
+            afterMount: mountLinuxInputMethodSetting,
+        });
+    }
     /// #endif
 };
 
@@ -276,6 +293,48 @@ const mountAccessibilitySetting = async (root: HTMLElement) => {
         }
     });
 };
+
+const mountLinuxInputMethodSetting = async (root: HTMLElement) => {
+    const input = root.querySelector<HTMLInputElement>("#linuxInputMethod");
+    const status = root.querySelector<HTMLElement>("#linuxInputMethodStatus");
+    let enabled = false;
+    const showStatus = (text: string) => {
+        status.textContent = text;
+        status.classList.toggle("fn__none", !text);
+    };
+    try {
+        const setting: {enabled: boolean; override: boolean | null} = await ipcRenderer.invoke(Constants.SIYUAN_GET, {
+            cmd: "getLinuxInputMethodSetting",
+        });
+        enabled = setting.enabled;
+        input.checked = setting.override ?? enabled;
+        if (setting.override !== null) {
+            showStatus(window.siyuan.languages.linuxInputMethodOverrideTip);
+            return;
+        }
+        input.disabled = false;
+    } catch (error) {
+        console.warn("read Linux input method setting failed", error);
+        showStatus(window.siyuan.languages.linuxInputMethodError);
+        return;
+    }
+    input.addEventListener("change", async () => {
+        input.disabled = true;
+        showStatus("");
+        try {
+            const setting: {enabled: boolean} = await ipcRenderer.invoke(Constants.SIYUAN_GET, {
+                cmd: "setLinuxInputMethodSetting", enabled: input.checked,
+            });
+            enabled = setting.enabled;
+        } catch (error) {
+            console.warn("save Linux input method setting failed", error);
+            showStatus(window.siyuan.languages.linuxInputMethodError);
+        } finally {
+            input.checked = enabled;
+            input.disabled = false;
+        }
+    });
+};
 /// #endif
 
 const genNetworkProxyHtml = (): string => {
@@ -294,7 +353,7 @@ const genNetworkProxyHtml = (): string => {
             <option value="http" ${proxy.scheme === "http" ? "selected" : ""}>HTTP</option>
         </select>
         <span class="fn__space"></span>
-        <input id="networkProxyHost" placeholder="user:pass@IP" class="b3-text-field fn__flex-1" value="${Lute.EscapeHTMLStr(proxy.host)}"/>
+        <input spellcheck="false" id="networkProxyHost" placeholder="user:pass@IP" class="b3-text-field fn__flex-1" value="${Lute.EscapeHTMLStr(proxy.host)}"/>
         <span class="fn__space"></span>
         <input id="networkProxyPort" placeholder="Port" class="b3-text-field fn__flex-1" value="${Lute.EscapeHTMLStr(proxy.port)}" type="number"/>
         <span class="fn__space"></span>
@@ -447,6 +506,13 @@ const mountExportData = (root: HTMLElement) => {
 const registerAppMaintenanceGroup = (tab: SettingTabBuilder) => {
     const group = tab.group("maintenance", window.siyuan.languages.configGroupMaintenance);
 
+    group.slot({
+        key: "workspaceStorage",
+        keywords: [window.siyuan.languages.workspaceStorage, window.siyuan.languages.workspaceStorageTip,
+            window.siyuan.languages.assets, "data", "repo", "history", "temp", "conf"],
+        html: genWorkspaceStorageHtml,
+        afterMount: mountWorkspaceStorage,
+    });
     group.button({
         id: "reloadUI",
         title: window.siyuan.languages.reloadUI,

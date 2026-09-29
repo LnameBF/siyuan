@@ -478,10 +478,27 @@ func refreshInstalledPackageREADME(pkgType string, installed, available *bazaar.
 // GetBazaarPackages 获取在线集市包列表
 func GetBazaarPackages(pkgType, frontend, keyword string) (bazaarPackages []*bazaar.Package) {
 	bazaarPackages = bazaar.GetBazaarPackages(pkgType, frontend)
+	return enrichBazaarPackages(bazaarPackages, pkgType, keyword)
+}
+
+// GetBazaarPackagesWithError 获取在线集市包，并保留网络错误供工具调用方区分空列表与请求失败。
+func GetBazaarPackagesWithError(pkgType, frontend, keyword string) ([]*bazaar.Package, error) {
+	packages, err := bazaar.GetBazaarPackagesMap(pkgType, frontend)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]*bazaar.Package, 0, len(packages))
+	for _, pkg := range packages {
+		list = append(list, pkg)
+	}
+	return enrichBazaarPackages(list, pkgType, keyword), nil
+}
+
+func enrichBazaarPackages(bazaarPackages []*bazaar.Package, pkgType, keyword string) []*bazaar.Package {
 	bazaarPackages = bazaar.FilterPackages(bazaarPackages, keyword)
 	installedInfos, _, _, err := GetInstalledPackageInfos(pkgType)
 	if err != nil {
-		return
+		return bazaarPackages
 	}
 	installedMap := make(map[string]*bazaar.Package, len(installedInfos))
 	for _, info := range installedInfos {
@@ -504,7 +521,7 @@ func GetBazaarPackages(pkgType, frontend, keyword string) (bazaarPackages []*baz
 			pkg.Current = pkg.Name == Conf.Appearance.Icon
 		}
 	}
-	return
+	return bazaarPackages
 }
 
 func GetBazaarPackageREADME(ctx context.Context, repoURL, repoHash, pkgType string) (ret string) {
@@ -525,6 +542,8 @@ func installBazaarPackage(pkgType, repoURL, repoHash, repoRef, packageName strin
 	err = bazaar.InstallPackage(repoURL, repoHash, repoRef, installPath, Conf.System.ID, pkgType, packageName, meta.update)
 	if err != nil {
 		err = fmt.Errorf(Conf.Language(46), packageName, err)
+	} else {
+		IncSyncIfNeeded(installPath)
 	}
 	return
 }
@@ -564,7 +583,7 @@ func finishInstall(pkgType string, items []batchInstallItem, themeOptions *Theme
 			if !item.meta.update && nil != themeOptions {
 				// 新安装主题时才自动切换 https://github.com/siyuan-note/siyuan/issues/4966
 				applied := false
-				theme, err := bazaar.ParsePackageJSON(filepath.Join(util.ThemesPath, item.name, "theme.json"))
+				theme, err := bazaar.ParsePackageJSON(filepath.Join(util.AppearancePackagePath("themes", item.name), "theme.json"))
 				if nil == err && nil != theme && nil != theme.Modes {
 					for _, mode := range *theme.Modes {
 						switch mode {
@@ -586,13 +605,15 @@ func finishInstall(pkgType string, items []batchInstallItem, themeOptions *Theme
 				}
 				Conf.Appearance.Mode = themeOptions.Mode
 				Conf.Appearance.ModeOS = themeOptions.ModeOS
-				Conf.Appearance.ThemeJS = gulu.File.IsExist(filepath.Join(util.ThemesPath, item.name, "theme.js"))
+				Conf.Appearance.ThemeJS = gulu.File.IsExist(filepath.Join(util.AppearancePackagePath("themes", item.name), "theme.js"))
 				Conf.Save()
 			}
 		}
-		InitAppearance()
-		WatchThemes()
-		util.BroadcastByType("main", "setAppearance", 0, "", Conf.Appearance)
+		var names []string
+		for _, item := range items {
+			names = append(names, item.name)
+		}
+		refreshAppearancePackages(names, nil)
 	case "icons":
 		for _, item := range items {
 			if !item.meta.update && applyNewAppearance {
@@ -601,8 +622,11 @@ func finishInstall(pkgType string, items []batchInstallItem, themeOptions *Theme
 				Conf.Save()
 			}
 		}
-		InitAppearance()
-		util.BroadcastByType("main", "setAppearance", 0, "", Conf.Appearance)
+		var names []string
+		for _, item := range items {
+			names = append(names, item.name)
+		}
+		refreshAppearancePackages(nil, names)
 	}
 }
 
@@ -657,6 +681,7 @@ func InstallLocalBazaarPackage(archivePath, frontend string, overwrite bool) (re
 	if err = bazaar.InstallLocalPackage(sourcePath, installPath, pkgType, pkg.Name, result.Updated); err != nil {
 		return result, fmt.Errorf(Conf.Language(46), pkg.Name, err)
 	}
+	IncSyncIfNeeded(installPath)
 	finishInstall(pkgType, []batchInstallItem{{name: pkg.Name, meta: installMeta{update: result.Updated}}}, nil, false)
 	return result, nil
 }
@@ -709,6 +734,13 @@ func UninstallPackage(pkgType, packageName string) error {
 			return err
 		}
 	}
+	// 删除可能部分成功，提前记录目录内是否存在参与同步的文件。
+	affectsSync := PathsAffectSync(installPath)
+	defer func() {
+		if affectsSync {
+			IncSync()
+		}
+	}()
 	err = bazaar.UninstallPackage(installPath)
 	if err != nil {
 		return fmt.Errorf(Conf.Language(47), err.Error())
@@ -733,12 +765,9 @@ func UninstallPackage(pkgType, packageName string) error {
 		uninstallPluginSet := hashset.New(packageName)
 		PushReloadPlugin(uninstallPluginSet, nil, nil, nil, "", "")
 	case "themes":
-		InitAppearance()
-		WatchThemes()
-		util.BroadcastByType("main", "setAppearance", 0, "", Conf.Appearance)
+		refreshAppearancePackages([]string{packageName}, nil)
 	case "icons":
-		InitAppearance()
-		util.BroadcastByType("main", "setAppearance", 0, "", Conf.Appearance)
+		refreshAppearancePackages(nil, []string{packageName})
 	}
 
 	return nil

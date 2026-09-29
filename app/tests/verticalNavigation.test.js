@@ -33,6 +33,7 @@ const rendererModules = () => {
     modules["render/tabsRender"] = "export const setTabTitleNavigationEditing = () => false;";
     modules["../util/highlightById"] = "export const scrollCenter = () => {};";
     modules["render/av/focus"] = 'import {focusEditableAtGoalX} from "../../wysiwyg/verticalCaret";\n' +
+        'import {isTableLikeView} from "./viewType";\n' +
         'import {ensureAVTableBoundaryRow, getAVData} from "./virtualScroll";\n' +
         "const clearSelect = () => {};\n" +
         extract("render/av/focus", ["getVisibleAVTitle", "focusAVTitleByVerticalArrow", "focusAVVerticalRegion",
@@ -76,11 +77,13 @@ const rendererModules = () => {
     visitKeyup(wysiwyg);
     assert.ok(keyupStatements);
     modules["wysiwyg/navigationKeyup"] = `import {getEditorRange} from "../util/selection";
+        import {getBlockSelectionModeElement} from "./blockSelection";
         import {hasClosestBlock, hasClosestByClassName} from "../util/hasClosest";
         import {shouldRunAVKeyupFallback} from "../render/av/verticalNavigation";
         const getAVTemplateInteractiveElement = () => false;
         const focusAVByArrow = () => { throw new Error("Unexpected legacy AV keyup fallback"); };
         export function bind(protyle) {
+            const isComposition = false;
             let arrowStartElement = protyle.wysiwyg.element;
             const handler = function(event) { ${keyupStatements} };
             protyle.wysiwyg.element.addEventListener("keyup", handler.bind(protyle.wysiwyg));
@@ -90,9 +93,10 @@ const rendererModules = () => {
     modules["util/selectionFocus"] = readFileSync(path.join(root, "util/selectionFocus.ts"), "utf8");
     modules["util/restoreNavigationFocus"] = `import {getUndoFocusElement} from "./selectionFocus";
         import {isInEmbedBlock} from "./hasClosest";
+        const restoreListMindmapFocus = () => false;
         const focusByOffset = element => { window.restoredFocusElement = element; return true; };\n` +
         extract("util/selection", ["restoreFocusContext"]);
-    for (const name of ["virtualScroll", "selectionState", "rangeSelect", "groupTableVirtual", "backlinkScroll"]) {
+    for (const name of ["virtualScroll", "selectionState", "rangeSelect", "groupTableVirtual", "backlinkScroll", "viewType"]) {
         modules[`render/av/${name}`] = readFileSync(path.join(root, "render/av", `${name}.ts`), "utf8");
     }
     modules["../constants"] = "const SIYUAN_VERSION = 'test', NODE_ENV = 'test';\n" +
@@ -590,6 +594,11 @@ const runElectron = async () => {
         });
     });
     let exitCode = 0;
+    win.webContents.on("console-message", (details) => {
+        if (details.level === "error") {
+            console.error(details.message);
+        }
+    });
     try {
         await win.loadURL("data:text/html,<html><body></body></html>");
         win.webContents.debugger.attach("1.3");

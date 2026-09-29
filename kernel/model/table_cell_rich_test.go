@@ -38,38 +38,87 @@ func TestTableCellRichDocumentReaders(t *testing.T) {
 		},
 	}
 	source := "- **first**\n- second\n\n```go\na | b\nc\n```"
+	for _, source := range []string{source, source + "\n" +
+		`{: id="20260921000000-code001" linewrap="false" linenumber="true" ligatures="false"}`,
+		source + "\n" + `{: id="20260921000000-code001" custom-sy-code-tab-spaces="2"}`} {
+		for name, read := range readers {
+			t.Run(name, func(t *testing.T) {
+				tree, err := read(legacy)
+				if nil != err {
+					t.Fatal(err)
+				}
+				cell := tree.Root.FirstChild.LastChild.FirstChild
+				if tree.Root.Spec != "2" || cell.TableCellRich != nil || cell.FirstChild.TokensStr() != "**literal** - list" || cell.IALAttr("colspan") != "2" {
+					t.Fatal("legacy cell must retain its content, format, and document version")
+				}
+				cell.TableCellRich = &ast.TableCellRich{Spec: 1, Format: "kramdown", Content: source}
+				treenode.UpgradeSpec(tree)
+				luteEngine := util.NewLute()
+				data := render.NewJSONRenderer(tree, luteEngine.RenderOptions, luteEngine.ParseOptions).Render()
+				restored, err := read(data)
+				if nil != err {
+					t.Fatal(err)
+				}
+				restoredCell := restored.Root.FirstChild.LastChild.FirstChild
+				if restoredCell.TableCellRich.Content != source || !strings.Contains(restoredCell.Text(), "first") || strings.Contains(restoredCell.Text(), "literal") {
+					t.Fatal("reader must preserve rich source and rebuild its inline projection")
+				}
+				unknown := bytes.Replace(data, []byte(`"spec": 1`), []byte(`"spec": 99`), 1)
+				if bytes.Equal(unknown, data) {
+					unknown = bytes.Replace(data, []byte(`"spec":1`), []byte(`"spec":99`), 1)
+				}
+				original := bytes.Clone(unknown)
+				if _, err = read(unknown); nil == err {
+					t.Fatal("unsupported rich format must fail before normalization")
+				}
+				if !bytes.Equal(original, unknown) {
+					t.Fatal("reader changed unsupported input")
+				}
+			})
+		}
+	}
+}
+
+func TestLegacyTableAlignmentReadersAndExports(t *testing.T) {
+	originalConf := Conf
+	Conf = NewAppConf()
+	Conf.Editor = conf.NewEditor()
+	Conf.Export = conf.NewExport()
+	t.Cleanup(func() { Conf = originalConf })
+	legacy, err := os.ReadFile("../treenode/testdata/table-alignment-legacy.sy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	readers := map[string]func([]byte) (*parse.Tree, error){
+		"document": func(data []byte) (*parse.Tree, error) {
+			return filesys.LoadTreeByData(data, "20260923000000-box0001", "/20260923000000-root001.sy", util.NewLute())
+		},
+		"history and recovery": loadTreeByData0,
+		"history diff":         func(data []byte) (*parse.Tree, error) { return parseDocVersionTree(data, "20260923000000-root001") },
+		"backup and snapshot": func(data []byte) (*parse.Tree, error) {
+			_, tree, err := parseTreeInSnapshot(data, util.NewLute())
+			return tree, err
+		},
+	}
 	for name, read := range readers {
 		t.Run(name, func(t *testing.T) {
 			tree, err := read(legacy)
-			if nil != err {
+			if err != nil {
 				t.Fatal(err)
 			}
-			cell := tree.Root.FirstChild.LastChild.FirstChild
-			if tree.Root.Spec != "2" || cell.TableCellRich != nil || cell.FirstChild.TokensStr() != "**literal** - list" || cell.IALAttr("colspan") != "2" {
-				t.Fatal("legacy cell must retain its content, format, and document version")
+			table := tree.Root.FirstChild
+			if table == nil || len(table.TableAligns) != 1 || table.TableAligns[0] != 2 ||
+				table.FirstChild.FirstChild.FirstChild.TableCellAlign != 2 || table.LastChild.FirstChild.TableCellAlign != 3 {
+				t.Fatal("legacy table alignment was not read")
 			}
-			cell.TableCellRich = &ast.TableCellRich{Spec: 1, Format: "kramdown", Content: source}
-			treenode.UpgradeSpec(tree)
-			luteEngine := util.NewLute()
-			data := render.NewJSONRenderer(tree, luteEngine.RenderOptions, luteEngine.ParseOptions).Render()
-			restored, err := read(data)
-			if nil != err {
-				t.Fatal(err)
+			engine := util.NewLute()
+			word := string(render.NewProtyleExportDocxRenderer(tree, engine.RenderOptions, engine.ParseOptions).Render())
+			if strings.Contains(word, ` align="`) || !strings.Contains(word, "text-align: center") || !strings.Contains(word, "text-align: right") {
+				t.Fatalf("legacy alignment was not exported as inline styles: %s", word)
 			}
-			restoredCell := restored.Root.FirstChild.LastChild.FirstChild
-			if restoredCell.TableCellRich.Content != source || !strings.Contains(restoredCell.Text(), "first") || strings.Contains(restoredCell.Text(), "literal") {
-				t.Fatal("reader must preserve rich source and rebuild its inline projection")
-			}
-			unknown := bytes.Replace(data, []byte(`"spec": 1`), []byte(`"spec": 99`), 1)
-			if bytes.Equal(unknown, data) {
-				unknown = bytes.Replace(data, []byte(`"spec":1`), []byte(`"spec":99`), 1)
-			}
-			original := bytes.Clone(unknown)
-			if _, err = read(unknown); nil == err {
-				t.Fatal("unsupported rich format must fail before normalization")
-			}
-			if !bytes.Equal(original, unknown) {
-				t.Fatal("reader changed unsupported input")
+			markdown := string(render.NewProtyleExportMdRenderer(tree, engine.RenderOptions, engine.ParseOptions).Render())
+			if !strings.Contains(markdown, "text-align: right;") {
+				t.Fatalf("per-cell alignment was lost from Markdown: %s", markdown)
 			}
 		})
 	}
@@ -77,7 +126,9 @@ func TestTableCellRichDocumentReaders(t *testing.T) {
 
 func TestTableCellRichHTMLAndMarkdownExports(t *testing.T) {
 	luteEngine := util.NewLute()
-	source := "- **first**\n- second\n\n```go\na | b\nc\n```\n\n![image](assets/original.png)"
+	source := "- **first**\n- second\n\n```go\na | b\nc\n```\n" +
+		`{: id="20260921000000-code001" linewrap="false" linenumber="true" ligatures="false" custom-sy-code-tab-spaces="2"}` +
+		"\n\n![image](assets/original.png)"
 	tree := parse.Parse("", []byte("| Header |\n| --- |\n| value |"), luteEngine.ParseOptions)
 	cell := tree.Root.FirstChild.LastChild.FirstChild
 	cell.TableCellRich = &ast.TableCellRich{Spec: 1, Format: "kramdown", Content: source}
@@ -95,6 +146,11 @@ func TestTableCellRichHTMLAndMarkdownExports(t *testing.T) {
 	}
 	if err := treenode.MaterializeTableCellRichExport(tree.Root); nil != err {
 		t.Fatal(err)
+	}
+	codes := cell.ChildrenByType(ast.NodeCodeBlock)
+	if len(codes) != 1 || codes[0].IALAttr("linewrap") != "false" || codes[0].IALAttr("linenumber") != "true" ||
+		codes[0].IALAttr("ligatures") != "false" || codes[0].IALAttr("custom-sy-code-tab-spaces") != "2" {
+		t.Fatal("export materialization lost code settings")
 	}
 	ast.Walk(cell, func(node *ast.Node, entering bool) ast.WalkStatus {
 		if entering && node.Type == ast.NodeLinkDest {
@@ -235,7 +291,7 @@ func TestTableCellRichFootnoteExport(t *testing.T) {
 		TextMarkBlockRefID: table.ID, TextMarkBlockRefSubtype: "s", TextMarkTextContent: "Rich target"})
 	writeAssetDownloadDocumentTest(t, referring)
 	exported, err := exportTree(prepareExportTree(getExportBlockTree(referring.ID)), true, true, false, true,
-		4, 0, 0, "#", "#", "", "", false, "", false, true, true)
+		4, 0, 0, "#", "#", "", "", false, "", false, true, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

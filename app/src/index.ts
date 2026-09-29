@@ -1,4 +1,5 @@
 import {Constants} from "./constants";
+import {closeNotebookHistoryDialogs} from "./history/notebookDialogs";
 import {systemConfig} from "./config/systemConfig";
 import {openStandaloneDatabaseItemByURI} from "./protyle/render/av/openStandaloneDatabaseItem";
 /// #if BROWSER
@@ -11,7 +12,7 @@ import {initBlockPopover} from "./block/popover";
 import {applyCloudUserState, onSetaccount} from "./config/tabs/accountUi";
 import {addScript, addScriptSync} from "./protyle/util/addScript";
 import {genUUID} from "./util/genID";
-import {fetchGet, fetchPost} from "./util/fetch";
+import {fetchPost} from "./util/fetch";
 import {
     addBaseURL,
     getDocDisplayName,
@@ -54,7 +55,7 @@ import {ipcRenderer} from "electron";
 import {getDockByType} from "./layout/tabUtil";
 import {Files} from "./layout/dock/Files";
 import {Tag} from "./layout/dock/Tag";
-import {appearanceConfigApi} from "./config/tabs/appearanceRuntime";
+import {appearanceConfigApi, refreshAppearance} from "./config/tabs/appearanceRuntime";
 import {renderSnippet} from "./config/util/snippets";
 import {refreshThemeStyle, reloadInlineStyles, setBodyHighlight} from "./util/assets";
 import {reloadSync} from "./util/reloadSync";
@@ -63,6 +64,7 @@ import {ensureUILayout} from "./util/ensureUILayout";
 import {applyEntryVisibility} from "./config/entryVisibility/runtime";
 import {removeBlockPanelEditors} from "./block/panelRemoval";
 import {initializeEnglishCommandTranslations} from "./command/english";
+import {loadLanguages} from "./boot/loadLanguages";
 import {installPluginStorageFetchAppId} from "./util/fetchAppId";
 
 export class App {
@@ -92,6 +94,9 @@ export class App {
                         case "setAppearance":
                             appearanceConfigApi.apply(data.data);
                             break;
+                        case "refreshAppearance":
+                            void refreshAppearance(data.data);
+                            break;
                         case "reloadInlineStyles":
                             void reloadInlineStyles();
                             break;
@@ -107,6 +112,9 @@ export class App {
                             break;
                         case "databaseIndexCommit":
                             processBacklinkIndexCommit(data.data);
+                            if (getDockByType("tag")?.data.tag instanceof Tag) {
+                                (getDockByType("tag").data.tag as Tag).update();
+                            }
                             break;
                         case "reloadTag":
                             if (getDockByType("tag")?.data.tag instanceof Tag) {
@@ -190,6 +198,7 @@ export class App {
                             break;
                         case "closeBox":
                         case "removeBox":
+                            closeNotebookHistoryDialogs(data.data.box);
                             removeBlockPanelEditors({notebookId: data.data.box});
                             getAllTabs().forEach((tab) => {
                                 if (tab.headElement) {
@@ -317,16 +326,16 @@ export class App {
             await notebookPromise;
             await loadPlugins(this);
             getLocalStorage(() => {
-                fetchGet(`/appearance/langs/${window.siyuan.config.appearance.lang}.json?v=${Constants.SIYUAN_VERSION}`, (lauguages: IObject) => {
-                    window.siyuan.languages = lauguages;
+                void loadLanguages(window.siyuan.config.appearance.lang, Constants.SIYUAN_VERSION, (languages: IObject) => {
+                    window.siyuan.languages = languages;
                     void initializeEnglishCommandTranslations(
                         window.siyuan.config.appearance.lang,
-                        lauguages as Record<string, string>,
+                        languages as Record<string, string>,
                         Constants.SIYUAN_VERSION,
                     );
                     window.siyuan.menus = new Menus(this);
                     bootSync();
-                    fetchPost("/api/setting/getCloudUser", {}, async userResponse => {
+                    fetchPost("/api/setting/getCloudUser", {cached: true}, async userResponse => {
                         window.siyuan.user = userResponse.data && "userId" in userResponse.data ? userResponse.data : null;
                         await ensureOnboarding();
                         await setNoteBook();
@@ -343,6 +352,7 @@ export class App {
                         /// #endif
                         window.siyuan.isReady = true;
                         mainWs.flushMainMessages();
+                        fetchPost("/api/setting/getCloudUser", {});
                     });
                 });
             });

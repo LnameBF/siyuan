@@ -1,3 +1,4 @@
+import {isTableLikeView} from "../render/av/viewType";
 import {Constants} from "../../constants";
 import {isBuiltinSlashHint} from "./builtinSlash";
 import {
@@ -21,7 +22,9 @@ import {
     getBlockRefAnchorText,
     getDocCreateTemplatePath,
     isConfiguredCreateTargetCurrentSubDoc,
+    newFileAtPath,
     newFileByRefHint,
+    newFileByRefHintAtPath,
     newFileBySelectRange,
     newFileInProtyle,
     newSubDocByRefHint
@@ -32,6 +35,8 @@ import {getContenteditableElement, hasNextSibling, hasPreviousSibling} from "../
 import {transaction, updateTransaction} from "../wysiwyg/transaction";
 import {insertHTML} from "../util/insertHTML";
 import {highlightRender} from "../render/highlightRender";
+import {spinListMindmapDOM} from "../render/listMindmap/create";
+import {mountNewListMindmap} from "../render/listMindmap";
 import {assetMenu, imgMenu} from "../../menus/protyle";
 import {hideElements} from "../ui/hideElements";
 import {fetchPost} from "../../util/fetch";
@@ -60,6 +65,7 @@ import {avRender} from "../render/av/render";
 import {genIconHTML} from "../render/util";
 import {updateAttrViewCellAnimation} from "../render/av/action";
 import {getAVBindingOperations} from "../render/av/binding";
+import {isRangeInEditor} from "../../util/newFileSelection";
 import {genCellValueByElement} from "../render/av/cell";
 import {setFold} from "../util/blockFold";
 import {getIconValueKind} from "../../emoji/iconValue";
@@ -73,10 +79,11 @@ import {
     shouldIgnoreHintTrigger,
 } from "./blockHintRange";
 import {getMobileHintPosition} from "./mobileHintPosition";
+import {getLiteSlashMenuHTML} from "../../mobile/util/liteSlashMenu";
 import {getVisibleViewportBounds} from "../../mobile/util/visibleViewport";
 import {getTopBarHeight} from "../../layout/getTopBarHeight";
 import {getSemanticInlineVisibleText, stripSemanticMarkersFromRangeText} from "../util/inlineElementMarker";
-import {areProtylePluginExtensionsEnabled} from "../runtimeCapabilities";
+import {areProtylePluginExtensionsEnabled, isProtyleListItemFragment} from "../runtimeCapabilities";
 
 const genEmojiInsertHTML = (value: string) => {
     const kind = getIconValueKind(value);
@@ -125,12 +132,16 @@ export class Hint {
     private createTargetSession?: TCreateTargetSession;
     private emojiPanel?: EmojiPanelController;
     private emojiBrowseMode = false;
+    private loadingAnimation?: Animation;
 
     constructor(protyle: IProtyle) {
         this.element = document.createElement("div");
         this.element.setAttribute("data-close", "false");
         this.element.className = "protyle-hint b3-list b3-list--background fn__none";
         this.element.addEventListener("click", (event) => {
+            if (this.element.closest("#keyboardToolbar")) {
+                return;
+            }
             const eventTarget = event.target as HTMLElement;
             if (eventTarget.tagName === "INPUT") {
                 event.stopPropagation();
@@ -177,6 +188,7 @@ export class Hint {
     }
 
     public destroy() {
+        this.cancelLoadingAnimation();
         this.destroyEmojiPanel();
     }
 
@@ -331,7 +343,10 @@ export class Hint {
                         return true;
                     }
                 });
-            } else if (!isMobile()) {
+            } else {
+                if (isMobile()) {
+                    protyle.toolbar.range = protyle.toolbar.range.cloneRange();
+                }
                 const slashData = hintSlash(key, protyle);
                 if (slashData.length === 0) {
                     if (endsWithMultiCharHintPrefix(key, protyle.options.hint.extend.map((item) => item.key))) {
@@ -344,7 +359,7 @@ export class Hint {
                 if (createTarget.result !== undefined) {
                     this.genHTML(hintSlash(key, protyle, createTarget.result), protyle, true, "hint");
                 } else {
-                    this.genLoading(protyle);
+                    this.genLoading(protyle, 200);
                     createTarget.promise.then((isCurrentSubDoc) => {
                         if (createTarget.isCurrent()) {
                             this.genHTML(hintSlash(key, protyle, isCurrentSubDoc), protyle, true, "hint");
@@ -436,8 +451,17 @@ export class Hint {
         this.element.style.top = `${position.top}px`;
     }
 
-    public genLoading(protyle: IProtyle) {
+    private cancelLoadingAnimation() {
+        this.loadingAnimation?.cancel();
+        this.loadingAnimation = undefined;
+    }
+
+    public genLoading(protyle: IProtyle, delay = 0) {
+        const delayPanel = this.loadingAnimation?.playState === "running" &&
+            (this.loadingAnimation.effect as KeyframeEffect)?.target === this.element;
+        this.cancelLoadingAnimation();
         this.destroyEmojiPanel();
+        const wasHidden = this.element.classList.contains("fn__none");
         if (this.element.classList.contains("fn__none")) {
             this.element.innerHTML = '<div class="fn__loading" style="height: 128px;position: initial"><img width="64px" src="/stage/loading-pure.svg"></div>';
             this.element.classList.remove("fn__none");
@@ -462,6 +486,14 @@ export class Hint {
             }
         } else if (!this.element.querySelector(".fn__loading")) {
             this.element.insertAdjacentHTML("beforeend", '<div class="fn__loading"><img width="64px" src="/stage/loading-pure.svg"></div>');
+        }
+        if (delay > 0) {
+            // 首次打开时延迟显示整个占位面板，更新候选项时只延迟显示加载遮罩
+            const loadingElement = wasHidden || delayPanel ? this.element : this.element.querySelector(".fn__loading");
+            this.loadingAnimation = loadingElement.animate([
+                {visibility: "hidden"},
+                {visibility: "hidden"},
+            ], {duration: delay});
         }
     }
 
@@ -513,9 +545,12 @@ export class Hint {
     }
 
     private getHTMLByData(data: IHintData[]) {
+        if (this.source === "hint" && this.element.closest("#keyboardToolbar")) {
+            return getLiteSlashMenuHTML(data);
+        }
         let hintsHTML = '<div style="flex: 1;overflow:auto;">';
         if (this.source !== "hint") {
-            hintsHTML = '<input style="margin:0 8px 4px 8px" class="b3-text-field"><div style="flex: 1;overflow:auto;">';
+            hintsHTML = '<input spellcheck="false" style="margin:0 8px 4px 8px" class="b3-text-field"><div style="flex: 1;overflow:auto;">';
         }
         const focusIndex = data.findIndex(item => item.focus);
         data.forEach((hintData, i) => {
@@ -531,6 +566,7 @@ export class Hint {
     }
 
     public genHTML(data: IHintData[], protyle: IProtyle, hide = false, source: THintSource) {
+        this.cancelLoadingAnimation();
         this.source = source;
         this.destroyEmojiPanel();
         if (data.length === 0) {
@@ -641,6 +677,9 @@ export class Hint {
                     const subDocRefText = `((newSubDoc "${oldValue}"${Constants.ZWSP}'${newFileName}${Lute.Caret}'))`;
                     searchHTML += `<button style="width: calc(100% - 16px)" class="b3-list-item b3-list-item--two${hideConfiguredCreate && response.data.blocks.length === 0 ? " b3-list-item--focus" : ""}" data-value="${encodeURIComponent(subDocRefText)}"><div class="b3-list-item__first"><svg class="b3-list-item__graphic"><use xlink:href="#iconFile"></use></svg>
 <span class="b3-list-item__text">${window.siyuan.languages.newSubDoc} <mark>${response.data.k}</mark></span></div></button>`;
+                    const pathRefText = `((newFileAtPath "${oldValue}"${Constants.ZWSP}'${newFileName}${Lute.Caret}'))`;
+                    searchHTML += `<button style="width: calc(100% - 16px)" class="b3-list-item b3-list-item--two" data-value="${encodeURIComponent(pathRefText)}"><div class="b3-list-item__first"><svg class="b3-list-item__graphic"><use xlink:href="#iconFolder"></use></svg>
+<span class="b3-list-item__text">${window.siyuan.languages.newFileAtPath} <mark>${response.data.k}</mark></span></div></button>`;
                 }
                 response.data.blocks.forEach((item: IBlock, index: number) => {
                     let blockRefHTML;
@@ -668,6 +707,7 @@ ${genHintItemHTML(item)}
     }
 
     private genEmojiHTML(protyle: IProtyle, value = "") {
+        this.cancelLoadingAnimation();
         if (value && !this.enableEmoji) {
             return;
         }
@@ -722,7 +762,7 @@ ${genHintItemHTML(item)}
             focusByRange(protyle.toolbar.range);
             insertHTML(protyle.lute.SpinBlockDOM(genEmojiInsertHTML(unicode)), protyle, false, true,
                 false, undefined, undoContext);
-        }, undefined, {targetID});
+        }, undefined, {targetID, insertRange: range});
     }
 
     private destroyEmojiPanel() {
@@ -739,6 +779,11 @@ ${genHintItemHTML(item)}
         const range = protyle.toolbar.range;
         let nodeElement = hasClosestBlock(protyle.toolbar.range.startContainer) as HTMLElement;
         if (!nodeElement) {
+            return;
+        }
+        if (["/", "、"].includes(this.splitChar) && isProtyleListItemFragment(protyle) &&
+            ["- " + Lute.Caret, "1. " + Lute.Caret, "- [ ] " + Lute.Caret].includes(value)) {
+            this.enableExtend = false;
             return;
         }
         // 新建标签的搜索状态：用选中的标签替换原空标签
@@ -767,13 +812,50 @@ ${genHintItemHTML(item)}
             if (!cellElement) {
                 return;
             }
-            const rowElement = hasClosestByClassName(cellElement, nodeElement.getAttribute("data-av-type") === "table" ? "av__row" : "av__gallery-item");
+            const rowElement = hasClosestByClassName(cellElement, isTableLikeView(nodeElement.getAttribute("data-av-type")) ? "av__row" : "av__gallery-item");
             if (!rowElement) {
                 return;
             }
             const previousID = rowElement.dataset.id;
             const avID = nodeElement.getAttribute("data-av-id");
             const previousValue = genCellValueByElement("block", cellElement);
+            if (value.startsWith("((newFileAtPath ") && value.endsWith(`${Lute.Caret}'))`)) {
+                const fileNames = value.substring("((newFileAtPath \"".length, value.length - 4).split(`"${Constants.ZWSP}'`);
+                const name = fileNames.length === 1 ? fileNames[0] : fileNames[1];
+                const {notebookId, path, block: {rootID}} = protyle;
+                const blockID = nodeElement.dataset.nodeId;
+                const bindingCell = cellElement;
+                const savedValue = JSON.stringify(previousValue);
+                const savedRange = range.cloneRange();
+                // 选址期间条目可能被删除、换绑或重绘，始终校验原条目及其主键值。
+                const isValid = () => protyle.notebookId === notebookId && protyle.path === path &&
+                    protyle.block.rootID === rootID && nodeElement.isConnected && bindingCell.isConnected &&
+                    protyle.wysiwyg.element.contains(nodeElement) && nodeElement.contains(rowElement) &&
+                    rowElement.contains(bindingCell) && nodeElement.dataset.nodeId === blockID &&
+                    nodeElement.getAttribute("data-av-id") === avID && rowElement.dataset.id === previousID &&
+                    JSON.stringify(genCellValueByElement("block", bindingCell)) === savedValue;
+                newFileAtPath({
+                    notebookId,
+                    name,
+                    isValid,
+                    restoreFocus() {
+                        if (isRangeInEditor(protyle.wysiwyg.element, savedRange)) {
+                            focusByRange(savedRange);
+                        }
+                    },
+                    onCreated(id, title) {
+                        const operations = getAVBindingOperations(avID, previousID, id, blockID,
+                            previousValue, {protyleID: protyle.id});
+                        transaction(protyle, operations.doOperations, operations.undoOperations);
+                        updateAttrViewCellAnimation(bindingCell, {
+                            type: "block",
+                            isDetached: false,
+                            block: {content: title, id},
+                        });
+                    },
+                });
+                return;
+            }
             let tempElement = document.createElement("div");
             tempElement.innerHTML = value.replace(/<mark>/g, "").replace(/<\/mark>/g, "");
             tempElement = tempElement.firstElementChild as HTMLDivElement;
@@ -836,12 +918,14 @@ ${genHintItemHTML(item)}
             return;
         }
         // 新建文件
-        if (Constants.BLOCK_HINT_KEYS.includes(this.splitChar) && value.startsWith("((newFile ") && value.endsWith(`${Lute.Caret}'))`)) {
-            const fileNames = value.substring(11, value.length - 4).split(`"${Constants.ZWSP}'`);
+        const choosePath = value.startsWith("((newFileAtPath ");
+        if (Constants.BLOCK_HINT_KEYS.includes(this.splitChar) && (value.startsWith("((newFile ") || choosePath) && value.endsWith(`${Lute.Caret}'))`)) {
+            const prefix = choosePath ? "((newFileAtPath " : "((newFile ";
+            const fileNames = value.substring(prefix.length + 1, value.length - 4).split(`"${Constants.ZWSP}'`);
             const realFileName = fileNames.length === 1 ? fileNames[0] : fileNames[1];
-            newFileByRefHint(protyle, realFileName, (id) => {
+            const insertRef = (id: string, insertRange: Range) => {
                 // https://github.com/siyuan-note/siyuan/issues/10133
-                protyle.toolbar.range = range;
+                protyle.toolbar.range = insertRange;
                 const refElement = protyle.toolbar.setInlineMark(protyle, "block-ref", "range", {
                     type: "id",
                     color: `${id}${Constants.ZWSP}${refIsS ? "s" : "d"}${Constants.ZWSP}${getBlockRefAnchorText(refIsS ? fileNames[0] : realFileName)}`
@@ -850,7 +934,12 @@ ${genHintItemHTML(item)}
                     protyle.toolbar.range.setEnd(refElement[0].lastChild, refElement[0].lastChild.textContent.length);
                 }
                 protyle.toolbar.range.collapse(false);
-            });
+            };
+            if (choosePath) {
+                newFileByRefHintAtPath(protyle, realFileName, range, insertRef);
+            } else {
+                newFileByRefHint(protyle, realFileName, (id) => insertRef(id, range));
+            }
             return;
         }
         if (Constants.BLOCK_HINT_KEYS.includes(this.splitChar)) {
@@ -906,7 +995,8 @@ ${genHintItemHTML(item)}
         } else if (this.splitChar === "/" || this.splitChar === "、") {
             // 精简模式的自定义候选按文本插入，内置候选执行命令；块引用保留本地事务和后续提示。
             if (protyle.lite && (Constants.BLOCK_HINT_KEYS.includes(value) ||
-                !isBuiltinSlashHint(protyle.options.hint.extend.find((item) => item.key === "/" && item.hint)?.hint))) {
+                !isBuiltinSlashHint(protyle.options.hint.extend.find((item) => item.key === "/" && item.hint)?.hint,
+                    value, protyle))) {
                 insertHTML(value, protyle, false, false, false, undefined, undoContext);
                 if (Constants.BLOCK_HINT_KEYS.includes(value)) {
                     this.enableExtend = true;
@@ -1030,7 +1120,8 @@ ${genHintItemHTML(item)}
                 if (value !== "![]()") {
                     this.fixImageCursor(range);
                 }
-                let textContent = value;
+                const isMindmap = value === `- ${Lute.Caret}\n{: ${Constants.CUSTOM_SY_LIST_MINDMAP}="1"}`;
+                let textContent = isMindmap ? `- ${Lute.Caret}` : value;
                 if (value === "```") {
                     textContent = value + (Constants.SIYUAN_RENDER_CODE_LANGUAGES.includes(window.siyuan.storage[Constants.LOCAL_CODELANG]) ? "" : window.siyuan.storage[Constants.LOCAL_CODELANG]) + Lute.Caret + "\n```";
                 }
@@ -1069,7 +1160,8 @@ ${genHintItemHTML(item)}
                         newHTML = `<div data-node-id="${id}" data-type="NodeHTMLBlock" class="render-node" data-subtype="block">${genIconHTML()}<div><protyle-html data-content=""></protyle-html><span style="position: absolute">${Constants.ZWSP}</span></div><div class="protyle-attr" contenteditable="false"></div></div>`;
                     } else {
                         editableElement.textContent = textContent;
-                        newHTML = protyle.lute.SpinBlockDOM(nodeElement.outerHTML);
+                        newHTML = isMindmap ? spinListMindmapDOM(protyle.lute, nodeElement.outerHTML) :
+                            protyle.lute.SpinBlockDOM(nodeElement.outerHTML);
                     }
                     // 列表项内创建列表时保留空段落，避免形成 li>list 非法结构 https://github.com/siyuan-note/siyuan/issues/17890
                     const tempCheck = document.createElement("div");
@@ -1115,7 +1207,8 @@ ${genHintItemHTML(item)}
                         }]);
                     }
                 } else {
-                    let newHTML = protyle.lute.SpinBlockDOM(textContent);
+                    let newHTML = isMindmap ? spinListMindmapDOM(protyle.lute, textContent) :
+                        protyle.lute.SpinBlockDOM(textContent);
                     if (value === "<div>") {
                         newHTML = `<div data-node-id="${Lute.NewNodeID()}" data-type="NodeHTMLBlock" class="render-node" data-subtype="block">${genIconHTML()}<div><protyle-html data-content=""></protyle-html><span style="position: absolute">${Constants.ZWSP}</span></div><div class="protyle-attr" contenteditable="false"></div></div>`;
                     }
@@ -1158,7 +1251,7 @@ ${genHintItemHTML(item)}
                     let foldData;
                     if (nodeElement.getAttribute("data-type") === "NodeHeading" &&
                         nodeElement.getAttribute("fold") === "1") {
-                        foldData = setFold(protyle, nodeElement, true, false, false, true);
+                        foldData = setFold(protyle, nodeElement, true, false, true);
                     }
                     nodeElement.insertAdjacentHTML("afterend", newHTML);
                     const newId = newHTML.substr(newHTML.indexOf('data-node-id="') + 14, 22);
@@ -1230,6 +1323,9 @@ ${genHintItemHTML(item)}
                     });
                 } else {
                     focusByWbr(nodeElement, range);
+                    if (isMindmap && nodeElement.dataset.type === "NodeMindmap") {
+                        mountNewListMindmap(protyle, nodeElement);
+                    }
                 }
             }
         }

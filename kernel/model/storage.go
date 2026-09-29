@@ -140,6 +140,8 @@ type Criterion struct {
 }
 
 type CriterionTypes struct {
+	Mindmap     *bool `json:"mindmap,omitempty"`
+	MindmapItem *bool `json:"mindmapItem,omitempty"`
 	CustomBlock *bool `json:"customBlock,omitempty"`
 
 	MathBlock     bool `json:"mathBlock"`
@@ -227,6 +229,9 @@ func SetCriterion(criterion *Criterion) (err error) {
 	}
 
 	err = setCriteria(criteria)
+	if err == nil {
+		IncSyncIfNeeded(filepath.Join(util.DataDir, "storage", "criteria.json"))
+	}
 	return
 }
 
@@ -247,6 +252,9 @@ func RemoveCriterion(name string) (err error) {
 	}
 
 	err = setCriteria(criteria)
+	if err == nil {
+		IncSyncIfNeeded(filepath.Join(util.DataDir, "storage", "criteria.json"))
+	}
 	return
 }
 

@@ -1,6 +1,6 @@
 {
 	"ID": "20240530101000-3qhz7br",
-	"Spec": "3",
+	"Spec": "5",
 	"Type": "NodeDocument",
 	"Properties": {
 		"ID": "20240530101000-rgsbrsc",
@@ -9,7 +9,7 @@
 		"title": "書式要素",
 		"title-img": "background-color:#269;background-image: linear-gradient(white 2px, transparent 2px),linear-gradient(90deg, white 2px, transparent 2px),linear-gradient(rgba(255,255,255,.3) 1px, transparent 1px),linear-gradient(90deg, rgba(255,255,255,.3) 1px, transparent 1px);background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;background-position:-2px -2px, -2px -2px, -1px -1px, -1px -1px;",
 		"type": "doc",
-		"updated": "20260910080119"
+		"updated": "20260928143000"
 	},
 	"Children": [
 		{
@@ -2038,6 +2038,1197 @@
 			]
 		},
 		{
+			"ID": "20240530101000-1ev7xub",
+			"Type": "NodeHeading",
+			"HeadingLevel": 2,
+			"Properties": {
+				"ID": "20240530101000-ch5e4vh",
+				"id": "20240530101000-1ev7xub",
+				"updated": "20260928143000"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "マインドマップブロック"
+				}
+			]
+		},
+		{
+			"ID": "20260928143000-unwwtu3",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260928143000-unwwtu3",
+				"updated": "20260928143000"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "マインドマップのツールバーで「表示をロック」を押すと、編集、拡大・縮小、移動が無効になります。マップ上でのスワイプやマウスホイール操作は文書をスクロールします。「表示のロックを解除」で操作を再開できます。ロック状態はブロックとともに保存されます。"
+				}
+			]
+		},
+		{
+			"ID": "20240530101000-lrwpxpq",
+			"Type": "NodeMindmap",
+			"Properties": {
+				"ID": "20240530101000-xheni2b",
+				"id": "20240530101000-lrwpxpq",
+				"updated": "20260923221935",
+				"custom-sy-list-mindmap-data": "{\"version\":1,\"nodes\":{},\"relations\":[]}"
+			},
+			"ListData": {
+				"Typ": 0,
+				"Tight": true,
+				"BulletChar": 45,
+				"Marker": "LQ=="
+			},
+			"Children": [
+				{
+					"ID": "20260920131944-fxnbecl",
+					"Type": "NodeMindmapItem",
+					"Properties": {
+						"id": "20260920131944-fxnbecl",
+						"updated": "20260923221935"
+					},
+					"ListData": {
+						"Typ": 0,
+						"BulletChar": 45,
+						"Marker": "LQ=="
+					},
+					"Children": [
+						{
+							"ID": "20260920131944-c2x53p3",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260920131944-c2x53p3",
+								"updated": "20260921102009"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "チュートリアル"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20260920131944-tivsbcd",
+					"Type": "NodeMindmapItem",
+					"Properties": {
+						"id": "20260920131944-tivsbcd",
+						"updated": "20260923221935"
+					},
+					"ListData": {
+						"Typ": 0,
+						"BulletChar": 45,
+						"Marker": "LQ=="
+					},
+					"Children": [
+						{
+							"ID": "20260920131944-2cfagn6",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260920131944-2cfagn6",
+								"updated": "20260921102009"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "構文ガイド"
+								}
+							]
+						},
+						{
+							"ID": "20260920131944-8lzxm29",
+							"Type": "NodeMindmap",
+							"Properties": {
+								"id": "20260920131944-8lzxm29",
+								"updated": "20260923221935"
+							},
+							"ListData": {
+								"Typ": 0,
+								"Tight": true,
+								"BulletChar": 45,
+								"Marker": "LQ=="
+							},
+							"Children": [
+								{
+									"ID": "20260920131944-k7z53iz",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-k7z53iz",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-u942ce7",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-u942ce7",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "通常の内容"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-24y9af6",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-24y9af6",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-7vcaxzb",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-7vcaxzb",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "ユーザーへのメンション"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-0d4drz3",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-0d4drz3",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-sb9orb2",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-sb9orb2",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "絵文字"
+												}
+											]
+										},
+										{
+											"ID": "20260920131944-xz2el6g",
+											"Type": "NodeMindmap",
+											"Properties": {
+												"id": "20260920131944-xz2el6g",
+												"updated": "20260923221935"
+											},
+											"ListData": {
+												"Typ": 0,
+												"Tight": true,
+												"BulletChar": 45,
+												"Marker": "LQ=="
+											},
+											"Children": [
+												{
+													"ID": "20260920131944-zp3k4g1",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-zp3k4g1",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-ld40zmf",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-ld40zmf",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "絵文字の例"
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-btnkm0h",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-btnkm0h",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-372ny2n",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-372ny2n",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "見出し - 見出し 3"
+												}
+											]
+										},
+										{
+											"ID": "20260920131944-fx4s3uk",
+											"Type": "NodeMindmap",
+											"Properties": {
+												"id": "20260920131944-fx4s3uk",
+												"updated": "20260923221935"
+											},
+											"ListData": {
+												"Typ": 0,
+												"Tight": true,
+												"BulletChar": 45,
+												"Marker": "LQ=="
+											},
+											"Children": [
+												{
+													"ID": "20260920131944-cerwn1v",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-cerwn1v",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-7f6n3gi",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-7f6n3gi",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "見出し 4"
+																}
+															]
+														},
+														{
+															"ID": "20260920131944-f1269cs",
+															"Type": "NodeMindmap",
+															"Properties": {
+																"id": "20260920131944-f1269cs",
+																"updated": "20260923221935"
+															},
+															"ListData": {
+																"Typ": 0,
+																"Tight": true,
+																"BulletChar": 45,
+																"Marker": "LQ=="
+															},
+															"Children": [
+																{
+																	"ID": "20260920131944-72s0v80",
+																	"Type": "NodeMindmapItem",
+																	"Properties": {
+																		"id": "20260920131944-72s0v80",
+																		"updated": "20260923221935"
+																	},
+																	"ListData": {
+																		"Typ": 0,
+																		"BulletChar": 45,
+																		"Marker": "LQ=="
+																	},
+																	"Children": [
+																		{
+																			"ID": "20260920131944-kg87f5c",
+																			"Type": "NodeParagraph",
+																			"Properties": {
+																				"id": "20260920131944-kg87f5c",
+																				"updated": "20260921102009"
+																			},
+																			"Children": [
+																				{
+																					"Type": "NodeText",
+																					"Data": "見出し 5"
+																				}
+																			]
+																		},
+																		{
+																			"ID": "20260920131944-92l9ke8",
+																			"Type": "NodeMindmap",
+																			"Properties": {
+																				"id": "20260920131944-92l9ke8",
+																				"updated": "20260923221935"
+																			},
+																			"ListData": {
+																				"Typ": 0,
+																				"Tight": true,
+																				"BulletChar": 45,
+																				"Marker": "LQ=="
+																			},
+																			"Children": [
+																				{
+																					"ID": "20260920131944-8x0hgje",
+																					"Type": "NodeMindmapItem",
+																					"Properties": {
+																						"id": "20260920131944-8x0hgje",
+																						"updated": "20260923221935"
+																					},
+																					"ListData": {
+																						"Typ": 0,
+																						"BulletChar": 45,
+																						"Marker": "LQ=="
+																					},
+																					"Children": [
+																						{
+																							"ID": "20260920131944-h75vath",
+																							"Type": "NodeParagraph",
+																							"Properties": {
+																								"id": "20260920131944-h75vath",
+																								"updated": "20260921102009"
+																							},
+																							"Children": [
+																								{
+																									"Type": "NodeText",
+																									"Data": "見出し 6"
+																								}
+																							]
+																						}
+																					]
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-zyq95qw",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-zyq95qw",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-d5ywuo5",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-d5ywuo5",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "画像"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-w2vou8e",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-w2vou8e",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-81fv6kk",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-81fv6kk",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "コードブロック"
+												}
+											]
+										},
+										{
+											"ID": "20260920131944-i0kv322",
+											"Type": "NodeMindmap",
+											"Properties": {
+												"id": "20260920131944-i0kv322",
+												"updated": "20260923221935"
+											},
+											"ListData": {
+												"Typ": 0,
+												"Tight": true,
+												"BulletChar": 45,
+												"Marker": "LQ=="
+											},
+											"Children": [
+												{
+													"ID": "20260920131944-87428op",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-87428op",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-amp1011",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-amp1011",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "通常"
+																}
+															]
+														}
+													]
+												},
+												{
+													"ID": "20260920131944-pnwvlsz",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-pnwvlsz",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-60dw3sc",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-60dw3sc",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "構文ハイライトのサポート"
+																}
+															]
+														},
+														{
+															"ID": "20260920131944-27sp95n",
+															"Type": "NodeMindmap",
+															"Properties": {
+																"id": "20260920131944-27sp95n",
+																"updated": "20260923221935"
+															},
+															"ListData": {
+																"Typ": 0,
+																"Tight": true,
+																"BulletChar": 45,
+																"Marker": "LQ=="
+															},
+															"Children": [
+																{
+																	"ID": "20260920131944-trno8o3",
+																	"Type": "NodeMindmapItem",
+																	"Properties": {
+																		"id": "20260920131944-trno8o3",
+																		"updated": "20260923221935"
+																	},
+																	"ListData": {
+																		"Typ": 0,
+																		"BulletChar": 45,
+																		"Marker": "LQ=="
+																	},
+																	"Children": [
+																		{
+																			"ID": "20260920131944-3x3xns7",
+																			"Type": "NodeParagraph",
+																			"Properties": {
+																				"id": "20260920131944-3x3xns7",
+																				"updated": "20260921102009"
+																			},
+																			"Children": [
+																				{
+																					"Type": "NodeText",
+																					"Data": "Go コードのハイライト例"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"ID": "20260920131944-gkne8ce",
+																	"Type": "NodeMindmapItem",
+																	"Properties": {
+																		"id": "20260920131944-gkne8ce",
+																		"updated": "20260923221935"
+																	},
+																	"ListData": {
+																		"Typ": 0,
+																		"BulletChar": 45,
+																		"Marker": "LQ=="
+																	},
+																	"Children": [
+																		{
+																			"ID": "20260920131944-x9j86ie",
+																			"Type": "NodeParagraph",
+																			"Properties": {
+																				"id": "20260920131944-x9j86ie",
+																				"updated": "20260921102009"
+																			},
+																			"Children": [
+																				{
+																					"Type": "NodeText",
+																					"Data": "Java コードのハイライト例"
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-qr3jo02",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-qr3jo02",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-dmlzypf",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-dmlzypf",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "番号付きリスト、箇条書きリスト、タスクリスト"
+												}
+											]
+										},
+										{
+											"ID": "20260920131944-ssi9lhg",
+											"Type": "NodeMindmap",
+											"Properties": {
+												"id": "20260920131944-ssi9lhg",
+												"updated": "20260923221935"
+											},
+											"ListData": {
+												"Typ": 0,
+												"Tight": true,
+												"BulletChar": 45,
+												"Marker": "LQ=="
+											},
+											"Children": [
+												{
+													"ID": "20260920131944-zdigrkk",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-zdigrkk",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-kpuu2cy",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-kpuu2cy",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "箇条書きリスト"
+																}
+															]
+														}
+													]
+												},
+												{
+													"ID": "20260920131944-z6trqgt",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-z6trqgt",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-kcbcjgp",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-kcbcjgp",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "番号付きリスト"
+																}
+															]
+														}
+													]
+												},
+												{
+													"ID": "20260920131944-9r2zkhb",
+													"Type": "NodeMindmapItem",
+													"Properties": {
+														"id": "20260920131944-9r2zkhb",
+														"updated": "20260923221935"
+													},
+													"ListData": {
+														"Typ": 0,
+														"BulletChar": 45,
+														"Marker": "LQ=="
+													},
+													"Children": [
+														{
+															"ID": "20260920131944-awp1igd",
+															"Type": "NodeParagraph",
+															"Properties": {
+																"id": "20260920131944-awp1igd",
+																"updated": "20260921102009"
+															},
+															"Children": [
+																{
+																	"Type": "NodeText",
+																	"Data": "タスクリスト"
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-wsm0xtj",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-wsm0xtj",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-a0y5ri0",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-a0y5ri0",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "表"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-vagbu7q",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-vagbu7q",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-sxwdd1k",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-sxwdd1k",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "詳細を折りたたむ"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-jttg9rl",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-jttg9rl",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-sbm8zuh",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-sbm8zuh",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "段落"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-bf6bdo8",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-bf6bdo8",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-42k3k8t",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-42k3k8t",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "リンク参照"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-kxf2ljj",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-kxf2ljj",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-bt2y3mo",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-bt2y3mo",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "数式"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-xsqawxu",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-xsqawxu",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-z3axxv2",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-z3axxv2",
+												"updated": "20260923221935"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "マインドマップブロック"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-cgykgo9",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-cgykgo9",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-29fhe24",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-29fhe24",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "フローチャート"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-xcnae2c",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-xcnae2c",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-z6y3dcr",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-z6y3dcr",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "シーケンス図"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-90uz9yk",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-90uz9yk",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-0vxva96",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-0vxva96",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "ガントチャート"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-iojxjbo",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-iojxjbo",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-1slrx3s",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-1slrx3s",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "チャート"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-llpzjlo",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-llpzjlo",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-v666ddx",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-v666ddx",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "五線譜"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-fsc4970",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-fsc4970",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-ba9r8fe",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-ba9r8fe",
+												"updated": "20260920131944"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "Graphviz"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-pm0ry2p",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-pm0ry2p",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-5letf02",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-5letf02",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "マルチメディア"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-eugd55s",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-eugd55s",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-jo5bsue",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-jo5bsue",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "脚注"
+												}
+											]
+										}
+									]
+								},
+								{
+									"ID": "20260920131944-aulmuns",
+									"Type": "NodeMindmapItem",
+									"Properties": {
+										"id": "20260920131944-aulmuns",
+										"updated": "20260923221935"
+									},
+									"ListData": {
+										"Typ": 0,
+										"BulletChar": 45,
+										"Marker": "LQ=="
+									},
+									"Children": [
+										{
+											"ID": "20260920131944-upi30ju",
+											"Type": "NodeParagraph",
+											"Properties": {
+												"id": "20260920131944-upi30ju",
+												"updated": "20260921102009"
+											},
+											"Children": [
+												{
+													"Type": "NodeText",
+													"Data": "ショートカット"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
 			"ID": "20240530101000-qg4hn8x",
 			"Type": "NodeHeading",
 			"HeadingLevel": 2,
@@ -3108,77 +4299,6 @@
 				"id": "20240530101000-xhk41lp",
 				"updated": "20240530101000"
 			}
-		},
-		{
-			"ID": "20240530101000-1ev7xub",
-			"Type": "NodeHeading",
-			"HeadingLevel": 2,
-			"Properties": {
-				"ID": "20240530101000-ch5e4vh",
-				"id": "20240530101000-1ev7xub",
-				"updated": "20240530101000"
-			},
-			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "マインドマップ"
-				}
-			]
-		},
-		{
-			"ID": "20240530101000-lrwpxpq",
-			"Type": "NodeCodeBlock",
-			"IsFencedCodeBlock": true,
-			"CodeBlockFenceChar": 96,
-			"CodeBlockFenceLen": 3,
-			"CodeBlockOpenFence": "YGBg",
-			"CodeBlockInfo": "bWluZG1hcA==",
-			"CodeBlockCloseFence": "YGBg",
-			"Properties": {
-				"ID": "20240530101000-xheni2b",
-				"id": "20240530101000-lrwpxpq",
-				"updated": "20240530101000"
-			},
-			"Children": [
-				{
-					"Type": "NodeCodeBlockFenceOpenMarker",
-					"Data": "```",
-					"CodeBlockFenceLen": 3
-				},
-				{
-					"Type": "NodeCodeBlockFenceInfoMarker",
-					"CodeBlockInfo": "bWluZG1hcA=="
-				},
-				{
-					"ID": "20240530101000-gr0btu9",
-					"Type": "NodeCodeBlockCode",
-					"Data": "- Tutorial\n- Grammar guidance\n  - General content\n  - Mention users\n  - Emoji\n    - Some emoji examples\n  - Heading-Heading 3\n    - Heading 4\n      - Heading 5\n        - Heading 6\n  - Picture\n  - Code block\n    - Normal\n    - Syntax highlighting support\n      - Demonstrate Go code highlighting\n      - Demo Java highlighting\n  - Ordered, disordered, task list\n    - Unordered list\n    - Ordered list\n    - task list\n  - Form\n  - Hide details\n  - Paragraph\n  - Link reference\n  - Mathematical formula\n  - Mind Map\n  - Flow chart\n  - Timing diagram\n  - Gantt chart\n  - Chart\n  - Staff\n  - Graphviz\n  - Multimedia\n  - Footnote\n  - Shortcuts\n",
-					"Properties": {
-						"ID": "20240530101000-syxic32",
-						"id": "20240530101000-gr0btu9"
-					}
-				},
-				{
-					"Type": "NodeCodeBlockFenceCloseMarker",
-					"Data": "```",
-					"CodeBlockFenceLen": 3
-				}
-			]
-		},
-		{
-			"ID": "20240530101000-qvuwb7d",
-			"Type": "NodeParagraph",
-			"Properties": {
-				"ID": "20240530101000-ibiw8ul",
-				"id": "20240530101000-qvuwb7d",
-				"updated": "20240530101000"
-			},
-			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "マインドマップをレンダリングするには、Markdown のリスト構文を使用します。"
-				}
-			]
 		},
 		{
 			"ID": "20240530101000-9x9ue7u",
@@ -4468,6 +5588,62 @@
 				"ID": "20240530101000-54uew8g",
 				"id": "20240530101000-qa9slig"
 			}
+		},
+		{
+			"ID": "20260928090424-7oo5lua",
+			"Type": "NodeHeading",
+			"HeadingLevel": 2,
+			"Properties": {
+				"id": "20260928090424-7oo5lua",
+				"updated": "20260928090424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "テキスト方向の自動判定"
+				}
+			]
+		},
+		{
+			"ID": "20260928090424-8to4vwd",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260928090424-8to4vwd",
+				"updated": "20260928090424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "デスクトップ版とモバイル版では、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "設定"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "外観"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "テキスト方向の自動判定"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " で有効にできます。スイッチは「右から左へ（RTL）」の下にあり、初期状態では無効です。段落と見出しの最初の強い方向性を持つ文字に基づいて、右から左または左から右を自動判定します。先頭の数字、句読点、絵文字は方向を決定しません。手動で指定したブロック単位とインラインの方向が優先されます。リスト記号の位置と表の列順序は従来の設定を維持します。プレビューおよび HTML・PDF エクスポートにも自動判定が適用されます。"
+				}
+			]
 		}
 	]
 }

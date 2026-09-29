@@ -32,12 +32,12 @@ const genNotebookSavePathHtml = (
     <div class="fn__flex">
         <select class="b3-select fn__size200" id="${selectId}">${optionsHtml}</select>
         <div class="fn__space"></div>
-        <input class="b3-text-field fn__flex-1" id="${pathId}" value="">
+        <input spellcheck="false" class="b3-text-field fn__flex-1" id="${pathId}" value="">
     </div>
     ${template ? `<div class="fn__hr"></div>
     <div class="b3-label__text">${template.desc}</div>
     <div class="fn__hr--small"></div>
-    <input class="b3-text-field fn__flex-center fn__block" id="${template.id}" value="">` : ""}
+    <input spellcheck="false" class="b3-text-field fn__flex-center fn__block" id="${template.id}" value="">` : ""}
 </div>`;
 
 const registerFileTreeBehaviorGroup = (tab: SettingTabBuilder) => {
@@ -51,14 +51,16 @@ const registerFileTreeBehaviorGroup = (tab: SettingTabBuilder) => {
             getAllModels().files.forEach((files) => files.updateDocActions());
         }),
     });
+    /// #endif
     group.switch("fileTree.parentDocClickExpand", {
         title: window.siyuan.languages.parentDocClickExpand,
         desc: window.siyuan.languages.parentDocClickExpandTip,
         save: (value) => fileConfigApi.patch("parentDocClickExpand", value, () => {
+            /// #if !MOBILE
             getAllModels().files.forEach((files) => files.updateDocActions());
+            /// #endif
         }),
     });
-    /// #endif
     group.switch("fileTree.alwaysSelectOpenedFile", {
         title: window.siyuan.languages.selectOpen,
         desc: window.siyuan.languages.fileTree2,

@@ -1,5 +1,6 @@
+import {isTableLikeView} from "./viewType";
 import {createEmptyAVValue} from "./attributeValue";
-import {popTextCell, renderCell, updateCellsValue} from "./cell";
+import {popTextCell, renderCell, renderCellAttr, updateCellsValue} from "./cell";
 import {getAVData, getAVSelectedItemIDs} from "./virtualScroll";
 import {getFieldsByData} from "./view";
 import {TAVBatchEditMode} from "./batchValue";
@@ -39,7 +40,7 @@ const findItemCell = (view: IAVView, viewType: TAVView, itemID: string, fieldInd
         }
         return;
     }
-    const isTable = viewType === "table";
+    const isTable = isTableLikeView(viewType) || viewType === "calendar";
     if (isTable) {
         const item = (view as IAVTable).rows?.find((currentItem) => currentItem.id === itemID);
         return item?.cells[fieldIndex];
@@ -135,6 +136,9 @@ const createEditProxy = (options: {
     cellElement.style.cssText = "position:absolute;inset:0;";
     cellElement.innerHTML = renderCell(displayValue, 0, options.data.view.showIcon, "table", options.field.options,
         options.field.dateFormat);
+    if (displayValue.type === "checkbox") {
+        renderCellAttr(cellElement, displayValue);
+    }
     renderAVRichTextElements(cellElement);
     return cellElement;
 };
